@@ -4,7 +4,7 @@ Master code for TEAM PI.
 Created by Brian Chen 03/08/2014
 Last Modified by Brian Chen 10/08/2014 8:14:59 PM
 ... Forever modified by Brian Chen.
-s
+
 Changelog:
 	0.10 - Initial version. Basic i2c functionality between slave1 and
 			master for TSOP1140s
@@ -23,7 +23,8 @@ Changelog:
 	0.80 - Implemented solenoid kicking. Decreased i2c rate to prevent
 			crashing.
 	0.90 - 
-	1.00 - Implemented out avoiding
+	1.00 - Implemented out avoiding. Implemented newer version of omnidrive
+			with acceleration to prevent slipping
 
 
 Beta 1.00 (C) TEAM PI 2014
@@ -54,7 +55,7 @@ Micro, add the following to the DEFINES PROJECT property:
 
 /**** general ***********************************************************/
 #define MAXSPEED						255
-#define KICK_ENABLED					true
+#define KICK_ENABLED					trues
 
 #define HIGHVOLT_PIN					11	//15v reference pin.
 
@@ -264,8 +265,8 @@ int16_t rotational_correction; // correction applied to each individual motor
 	0.70	130
 */
 
-//float kp = 0.7; //proportional constant. As kp increases, response time decreases
-//float kd = 125; //derivative constant. As kd increases, overshoot decreases
+// float kp = 0.7; //proportional constant. As kp increases, response time decreases
+// float kd = 125; //derivative constant. As kd increases, overshoot decreases
 // float kp = 0.45;
 // float kd = 40;
 float kp = 0.6;
