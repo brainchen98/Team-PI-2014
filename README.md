@@ -19,3 +19,6 @@ Qualified to represent Australia in the Junior competition of Robocup in Brazil 
 - Robocup Junior Queensland 1st place
 - Robocup Junior Australia x place
 
+###Our Goal(s)
+- To achieve 1st in Robocup Junior Australia 2014
+- To achieve 1st in Robocup Internationals
