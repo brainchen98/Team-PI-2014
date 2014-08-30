@@ -54,8 +54,8 @@ Micro, add the following to the DEFINES PROJECT property:
 *************************************************************************/
 
 /**** general ***********************************************************/
-#define MAXSPEED						255
-#define KICK_ENABLED					trues
+#define MAXSPEED						110
+#define KICK_ENABLED					true
 
 #define HIGHVOLT_PIN					11	//15v reference pin.
 
@@ -130,7 +130,7 @@ Micro, add the following to the DEFINES PROJECT property:
 #define US_LEFT_ADDRESS					0x72
 
 /**** light sensors *****************************************************/
-#define LREF_WHITE						730
+#define LREF_WHITE						875
 #define LREF_GREEN						700
 /*
 	WHITE = (LREF_WHITE, ∞]
@@ -226,8 +226,9 @@ unsigned long lastCMPSTime = 0;
 PMOTOR motorA(MOTORA_PWM, MOTORA_DIR, MOTORA_BRK, true, MOTOR_PWM_FREQ);
 PMOTOR motorB(MOTORB_PWM, MOTORB_DIR, MOTORB_BRK, true, MOTOR_PWM_FREQ);
 PMOTOR motorC(MOTORC_PWM, MOTORC_DIR, MOTORC_BRK, true, MOTOR_PWM_FREQ);
+PMOTOR motorD(MOTORD_PWM, MOTORD_DIR, MOTORD_BRK, true, MOTOR_PWM_FREQ);
 
-OMNIDRIVE robot(motorA, motorB, motorC);
+OMNIDRIVE robot(motorA, motorB, motorC, motorD);
 
 float targetBearing = 0; 	// simply where the angle the robot wants to face
 float targetDirection = 0;
@@ -270,7 +271,7 @@ int16_t rotational_correction; // correction applied to each individual motor
 // float kp = 0.45;
 // float kd = 40;
 float kp = 0.6;
-float kd = 30;
+float kd = 120;
 
 float error = 0, lInput = 0;
 float proportional = 0, derivative = 0, lDerivative = 0;
@@ -292,7 +293,7 @@ uint8_t lOrbitType = 0;
 /*************************************************************************
 ***** goals **************************************************************
 *************************************************************************/
-int16_t goalAngle;
+int16_t goalAngle = 1000;
 
 /*************************************************************************
 ***** solenoid ***********************************************************
@@ -332,6 +333,7 @@ uint8_t lcdReady = 0;
 *************************************************************************/
 
 int16_t lightReading1, lightReading2;
+uint8_t lRobotLight = 0;
 
 /*************************************************************************
 ***** temp ***************************************************************
@@ -418,6 +420,7 @@ void setup()
 #endif
 
 	// initialise ultrasonics
+
 	if (stat.usFront == I2C_STAT_SUCCESS){
 		usFront.getSoft(usFrontVersion);
 		usFront.setRange(US_RANGE);
@@ -477,9 +480,9 @@ void mainLoop(){
 		stat.slave1 = I2CGet(SLAVE1_ADDRESS, COMMAND_ANGLE_FLOAT, 4, IRAngle);
 		lineNumber = __LINE__;
 		stat.slave1 = I2CGet(SLAVE1_ADDRESS, COMMAND_ANGLE_ADV_FLOAT, 4, IRAngleAdv);
-		lineNumber = __LINE__;
 		stat.slave1 = I2CGet(SLAVE1_ADDRESS, COMMAND_STRENGTH, 1, IRStrength);
 
+		lineNumber = __LINE__;
 		// stat.slave1 = I2CGet(SLAVE1_ADDRESS, COMMAND_RESULTS, 20 * 1, IRResults);
 	}
 	lineNumber = __LINE__;
@@ -488,6 +491,10 @@ void mainLoop(){
 		stat.slave2 = I2CGetHL(SLAVE2_ADDRESS, COMMAND_LSENSOR1, lightReading1);
 		stat.slave2 = I2CGetHL(SLAVE2_ADDRESS, COMMAND_LSENSOR2, lightReading2);
 		stat.slave2 = I2CGetHL(SLAVE2_ADDRESS, COMMAND_GOAL_ANGLE, goalAngle);
+		uint16_t goalX;
+		stat.slave2 = I2CGetHL(SLAVE2_ADDRESS, COMMAND_GOAL_X, goalX);
+		lightReading2 = 0;
+		lightReading1 = 0;
 	}
 	lineNumber = __LINE__;
 	// read ultrasonics
@@ -517,19 +524,31 @@ void mainLoop(){
 		// on left edge of field
 		allowableRangeMin = 0;
 		allowableRangeMax = 180;
-		bearingTo180(allowableRangeMin);
-		bearingTo180(allowableRangeMax);
+		lRobotLight = 1;
 	}
 	else if (getLightColour(lightReading1) != WHITE && getLightColour(lightReading2) == WHITE){
 		// on left edge of field		
 		allowableRangeMax = 0;
 		allowableRangeMin = -180;
-		bearingTo180(allowableRangeMin);
-		bearingTo180(allowableRangeMax);
+		lRobotLight = 2;
 	}
 	else if (getLightColour(lightReading1) == WHITE && getLightColour(lightReading2) == WHITE){
 		// ???
+		if (lRobotLight == 1){
+			allowableRangeMin = 0;
+			allowableRangeMax = 180;
+			targetDirection = 90;
+		}
+		else{
+			allowableRangeMax = 0;
+			allowableRangeMin = -180;
+			targetDirection = -90;
+		}
 		Serial.println("on white");
+	}
+	else{
+		// on green
+		lRobotLight = 0;
 	}
 
 	if (lOrbitType != 0){
@@ -542,76 +561,122 @@ void mainLoop(){
 	if ((IRStrength > 145) && ballInKickAngle){
 		ballInPos = true;
 	}
-	if (IRStrength > 110){
-		targetSpeed = MAXSPEED;		
-		bool rotation_dir;
-		if (lOrbitType == 0){
-			if (IRAngleAdv > 0){
-				// ball on right. Must do a right orbit
-				rotation_dir = false;
-				targetDirection = getOrbit_CW_CCW(IRAngleAdv, rotation_dir);
-			}
-			else{
-				// ball on left. Must do a left orbit
-				rotation_dir = true;
-				targetDirection = getOrbit_CW_CCW(IRAngleAdv, rotation_dir);
-			}
-			if (targetDirection < allowableRangeMin || targetDirection > allowableRangeMax){
-				if(IRAngleAdv >= allowableRangeMin && IRAngleAdv <= allowableRangeMax){
-					// attempt different orbit
-					rotation_dir = !rotation_dir;
+	if (getLightColour(lightReading1) != WHITE || getLightColour(lightReading2) != WHITE){
+		if (IRStrength > 105){
+			targetSpeed = MAXSPEED;		
+			bool rotation_dir;
+			Serial.println("lOrbitType:" + String(lOrbitType));
+			if (lOrbitType == 0){
+				if (IRAngleAdv > 0){
+					// ball on right. Must do a right orbit
+					rotation_dir = false;
 					targetDirection = getOrbit_CW_CCW(IRAngleAdv, rotation_dir);
-					if (targetDirection < allowableRangeMin || targetDirection > allowableRangeMax){
-						// still no hope.
-						targetDirection = 0;
-						targetSpeed = 0;
-					}
-					else{
-						if (rotation_dir){
-							// cw type
-							lOrbitType = 1;
-						}
-						else{
-							// ccw type
-							lOrbitType = 2;
-						}
-					}
+					Serial.println("right");
 				}
 				else{
-					targetDirection = 0;
-					targetSpeed = 0;
+					// ball on left. Must do a left orbit
+					rotation_dir = true;
+					targetDirection = getOrbit_CW_CCW(IRAngleAdv, rotation_dir);
+					Serial.println("left");
 				}
+				// if (targetDirection < allowableRangeMin || targetDirection > allowableRangeMax){
+				// 	if (lRobotLight == 1){
+				// 		targetDirection = 90;
+				// 	}
+				// 	else if (lRobotLight == 2){
+				// 		targetDirection = -90;
+				// 	}
+				// }
+				// if (targetDirection < allowableRangeMin || targetDirection > allowableRangeMax){
+				// 	if(IRAngleAdv >= allowableRangeMin && IRAngleAdv <= allowableRangeMax){
+				// 		// attempt different orbit
+				// 		rotation_dir = !rotation_dir;
+				// 		targetDirection = getOrbit_CW_CCW(IRAngleAdv, rotation_dir);
+				// 		if (targetDirection < allowableRangeMin || targetDirection > allowableRangeMax){
+				// 			// other orbit won't work either. Just try and chase the ball.
+				// 			// targetDirection = IRAngleAdv;
+				// 			// if (targetDirection < allowableRangeMin || targetDirection > allowableRangeMax){
+				// 			// 	// still no hope.
+				// 			// 	targetDirection = 0;
+				// 			// 	targetSpeed = 0;
+				// 			// }			
+				// 			targetDirection = 0;
+				// 			targetSpeed = 0;		
+				// 		}
+				// 		else{
+				// 			if (rotation_dir){
+				// 				// cw type
+				// 				lOrbitType = 1;
+				// 			}
+				// 			else{
+				// 				// ccw type
+				// 				lOrbitType = 2;
+				// 			}
+				// 		}
+				// 	}
+				// 	else{
+				// 		targetDirection = 0;
+				// 		targetSpeed = 0;
+				// 	}
+				// }
 			}
+			else {
+				if (lOrbitType == 1){
+					rotation_dir = true;
+				}
+				else{
+					rotation_dir = false;
+				}
+				targetDirection = getOrbit_CW_CCW(IRAngleAdv, rotation_dir);
+				// if (targetDirection < allowableRangeMin || targetDirection > allowableRangeMax){
+				// 	if (lRobotLight == 1){
+				// 		targetDirection = 90;
+				// 	}
+				// 	else if (lRobotLight == 2){
+				// 		targetDirection = -90;
+				// 	}
+				// }
+			}
+			
 		}
-		else {
-			if (lOrbitType == 1){
-				rotation_dir = true;
-			}
-			else{
-				rotation_dir = false;
-			}
-			targetDirection = getOrbit_CW_CCW(IRAngleAdv, rotation_dir);
+
+		else if (IRStrength > 40){
+			targetDirection = IRAngleAdv;
+			targetSpeed = MAXSPEED;
 			if (targetDirection < allowableRangeMin || targetDirection > allowableRangeMax){
 				// still no hope.
 				targetDirection = 0;
 				targetSpeed = 0;
 			}
 		}
-		
-	}
-	else if (IRStrength > 40){
-		targetDirection = IRAngleAdv;
-		targetSpeed = MAXSPEED;
-		if (targetDirection < allowableRangeMin || targetDirection > allowableRangeMax){
-			// still no hope.
+		else{
+			// ball not found
 			targetDirection = 0;
 			targetSpeed = 0;
 		}
 	}
 	else{
-		// ball not found
-		targetDirection = 0;
-		targetSpeed = 0;
+		targetSpeed = MAXSPEED;
+		if (getLightColour(lightReading1) == WHITE && getLightColour(lightReading2) != WHITE){
+			// on left edge of field
+			targetDirection = -90;
+			lRobotLight = 1;
+		}
+		else if (getLightColour(lightReading1) != WHITE && getLightColour(lightReading2) == WHITE){
+			// on left edge of field		
+			targetDirection = 90;
+			lRobotLight = 2;
+		}
+		else if (getLightColour(lightReading1) == WHITE && getLightColour(lightReading2) == WHITE){
+			// ???
+			if (lRobotLight == 1){
+				targetDirection = -90;
+			}
+			else{
+				targetDirection = 90;
+			}
+			Serial.println("on white");
+		}
 	}
 	// now move the robot
 	movePIDForward(targetDirection, targetSpeed, targetBearing);
@@ -744,11 +809,16 @@ void timings(){
 		stat.cmps = cmps.getBearingR(cmpsBearing);
 	}
 	
-	/*if (nowMillis - lastTargetBearingUpdate > 100){
-	targetBearing = cmpsBearing + goalAngle * 1.2;
-	while (targetBearing < 0){ targetBearing += 360; }
-	while (targetBearing >= 360){ targetBearing -= 360; }
-	}*/
+	if (nowMillis - lastTargetBearingUpdate > 1){
+		if (abs(cmpsBearing + goalAngle) < 60 && goalAngle != 1000){
+			targetBearing = 1.3*(cmpsBearing + goalAngle);
+			bearingTo360(targetBearing);
+		}
+		else{
+			targetBearing = 0;
+		}
+	 	lastTargetBearingUpdate = nowMillis;
+	}
 }
 
 /*************************************************************************
@@ -774,7 +844,13 @@ float PDCalc(float input, float offset){
 	unsigned long dt = micros() - lastPIDTime;
 	float output;
 	if (dt > 1000000 / PID_UPDATE_RATE){	// only compute pid at desired rate
-		error = -(offset - input);
+		if (abs(cmpsBearing + goalAngle) < 80 && goalAngle != 1000){
+			//error = -(offset - input) - goalAngle*3;
+			error = -(offset - input);
+		}
+		else{
+			error = -(offset - input);
+		}
 		// make sure error ϵ (-180,180]
 		if (error <= -180){ error += 360; }
 		if (error >= 180){ error -= 180; }
@@ -812,66 +888,75 @@ inline float diff(float angle1, float angle2){
 
 inline void movePIDForward(float dir, uint8_t speed, float offset){
 	float difference = diff(dir, ldir);
-
+	bearingTo180(dir);
 	
-	// speed control to prevent slipping
-	// if (abs(difference) >= 120){
-	// 	speed = 0;
-	// }
-	// else{
-	// 	speed = speed*(120 - abs(difference))/120;
-	// }
-
-	// acceleration/deceleration
-
-
-	// if (speed != 0){
-	// 	if (difference > 1){
-	// 		dir = ldir + 1;
-	// 	}
-	// 	else if (difference < 1){
-	// 		dir = ldir - 1;
-	// 	}
-	// }
-	
-	if (dir < 0){
-		dir += 360;
-	}
-	if (dir > 360){
-		dir -= 360;
-	}
-
 	ldir = dir;
 	lSpeed = speed;
+	Serial.println("rotational_correction" + String(rotational_correction));
 	rotational_correction = PDCalc(cmpsBearing, offset);
-	robot.move(dir, speed, rotational_correction);
+	if ((dir > -10 && dir <= 0) || (dir > 0 && dir < 10)){
+		bearingTo360(dir);
+		robot.moveAccel(dir, speed, rotational_correction, 0.008, 0.002);
+	}
+	else if ((dir > -20 && dir <= 0) || (dir > 0 && dir < 20)){
+		bearingTo360(dir);
+		robot.moveAccel(dir, speed, rotational_correction, 0.006, 0.002);
+	}
+	else if ((dir > -40 && dir <= 0) || (dir > 0 && dir < 40)){
+		bearingTo360(dir);
+		robot.moveAccel(dir, speed, rotational_correction, 0.003, 0.002);
+	}
+	else if ((dir > -60 && dir <= 0) || (dir > 0 && dir < 60)){
+		bearingTo360(dir);
+		robot.moveAccel(dir, speed, rotational_correction, 0.002, 0.002);
+	}
+	else{
+		bearingTo360(dir);
+		robot.moveAccel(dir, speed, rotational_correction, 0.002, 0.002);
+	}
+	//robot.moveNoAccel(dir, speed, rotational_correction);
 }
 
 inline float getOrbit(float dir){
 	bearingTo180(dir);
-	if (dir >= -10 && dir <= 10){
+	if (dir >= -10 && dir <= 10 && goalAngle>= -10 && goalAngle <= 10){
 		//leave direction as it is
+		dir = goalAngle;
+		targetSpeed = 200;
 	}
-	else if (dir > 10 && dir <= 20){
+	else if (dir >= -10 && dir <= 10){
+		dir = 0;
+		targetSpeed = 160;
+	}
+	else if (dir > 10 && dir <= 15){
 		dir += 10;
 	}
+	else if (dir > 15 && dir <= 20){
+		dir += 45;
+	}
 	else if (dir > 20 && dir <= 40){
-		dir += 25;
+		dir += 50;
 	}
 	else if (dir > 40 && dir < 90){
 		dir += 55;
 	}
 	else if (dir > 90 && dir <= 180){
-		dir += 80;
+		dir += 60;
 	}
-	else if (dir < -10 && dir >= -40){
-		dir -= 25;
+	else if (dir < 10 && dir >= 15){
+		dir -= 10;
+	}
+	else if (dir < -15 && dir >= -20){
+		dir -= 45;
+	}
+	else if (dir < -20 && dir >= -40){
+		dir -= 50;
 	}
 	else if (dir < -40 && dir > -90){
 		dir -= 55;
 	}
 	else if (dir <= -90 && dir > -180){
-		dir -= 80;
+		dir -= 60;
 	}
 	bearingTo360(dir);
 	//Serial.println("dir: " + String(dir));
@@ -892,7 +977,8 @@ inline float getOrbit_CCW(float dir){
 
 inline float getOrbit_CW(float dir){
 	bearingTo180(dir);
-	if (dir >= 0){
+	Serial.println("DIR RIRJ:" + String(dir));
+	if (dir > 0){
 		dir = getOrbit(dir) + 180;
 	}
 	else{
@@ -902,7 +988,7 @@ inline float getOrbit_CW(float dir){
 	return dir;
 }
 
-inline float getOrbit_CW_CCW(float dir, bool rotation_dir){
+float getOrbit_CW_CCW(float dir, bool rotation_dir){
 	if (rotation_dir){
 		return getOrbit_CW(dir);
 	}
@@ -1082,7 +1168,7 @@ void serialDebug(){
 	dSerial.append("\tGoalAngle:" + String(goalAngle));
 	dSerial.append("\tL1:" + String(lightReading1));
 	dSerial.append("\tL2:" + String(lightReading2));
-	dSerial.append("\tusFront:" + String(usFrontRange));
+	dSerial.append("\tusLeft:" + String(usLeftRange));
 	dSerial.append("\tusRight:" + String(usRightRange));
 	dSerial.append("\tallowableRangeMin:" + String(allowableRangeMin));
 	dSerial.append("\tallowableRangeMax:" + String(allowableRangeMax));
