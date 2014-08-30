@@ -1,7 +1,7 @@
 Team-PI
 =======
 
-Team PI Robotics - Brisbane Boys' College
+**Team PI Robotics - Brisbane Boys' College**
 Robocup Junior Open Soccer
 
 ###Team Members
