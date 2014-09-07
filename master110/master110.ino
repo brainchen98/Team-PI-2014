@@ -4,7 +4,7 @@ Master code for TEAM PI.
 Created by Brian Chen 03/08/2014
 Last Modified by Brian Chen 10/08/2014 8:14:59 PM
 ... Forever modified by Brian Chen.
-
+Test push
 Changelog:
 	0.10 - Initial version. Basic i2c functionality between slave1 and
 			master for TSOP1140s
@@ -540,7 +540,7 @@ void mainLoop(){
 	else if (getLightColour(lightReading1) == WHITE && getLightColour(lightReading2) == WHITE){
 		// ???
 		if (lRobotLight == 1){
-			//testsetsoirhg
+			//testsetsoirhgsd
 			allowableRangeMin = 0;
 			allowableRangeMax = 180;
 			targetDirection = 90;
