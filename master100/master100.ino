@@ -29,9 +29,9 @@ Changelog:
 
 Beta 1.00 (C) TEAM PI 2014
 
-To compile this program for Teensy 3.0 in VS or Atmel Studio with Visual 
+To compile thids program for Teensy 3.0 in VS or Atmel Studio with Visual 
 Micro, add the following to the DEFINES PROJECT property:
-	F_CPU=48000000;USBf_SERIAL;LAYOUT_US_ENGLISH
+	F_CPU=48000000;USB_SERIAL;LAYOUT_US_ENGLISH
 
 ------------------------------------------------------------------------*/
 
