@@ -148,16 +148,21 @@ void loop(){
 }
 
 void serialDebug(){  
-	dSerial.append("Freq:\t" + String(pgmFreq));
-    dSerial.append("\tnangleAdv:\t" + String(angleAdv));
-	dSerial.append("\tangle:\t" + String(angle));
-	dSerial.append("\tStrength:\t" + String(strength));
-	dSerial.append("\tBest:\t" + String(bIndex) + "\t");
+	dSerial.append(pgmFreq);
+	dSerial.append(",");
+	dSerial.append(angleAdv);
+	dSerial.append(",");
+	dSerial.append(angle);
+	// dSerial.append("Freq:\t" + String(pgmFreq));
+ //    dSerial.append("\tnangleAdv:\t" + String(angleAdv));
+	// dSerial.append("\tangle:\t" + String(angle));
+	// dSerial.append("\tStrength:\t" + String(strength));
+	// dSerial.append("\tBest:\t" + String(bIndex) + "\t");
     
-	//Serial.print(tsop.index);		Serial.print('\t');		Serial.println(b_value);	
-	for (int i = 0; i < TSOP_COUNT; i++){
-		dSerial.append(String(results[i]) + "\t");
-	}
+	// //Serial.print(tsop.index);		Serial.print('\t');		Serial.println(b_value);	
+	// for (int i = 0; i < TSOP_COUNT; i++){
+	// 	dSerial.append(String(results[i]) + "\t");
+	// }
 	dSerial.writeBuffer();
 }
 
