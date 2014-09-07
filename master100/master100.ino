@@ -31,7 +31,7 @@ Beta 1.00 (C) TEAM PI 2014
 
 To compile this program for Teensy 3.0 in VS or Atmel Studio with Visual 
 Micro, add the following to the DEFINES PROJECT property:
-	F_CPU=48000000;USB_SERIAL;LAYOUT_US_ENGLISH
+	F_CPU=48000000;USBf_SERIAL;LAYOUT_US_ENGLISH
 
 ------------------------------------------------------------------------*/
 
@@ -71,7 +71,7 @@ Micro, add the following to the DEFINES PROJECT property:
 
 #define LCD_DEBUG						false
 
-#define DEBUG_SERIAL					true
+#define DEBUG_SERIAL					false
 #define DEBUGSERIAL_BAUD				115200
 
 #define BT_TX							0
@@ -79,7 +79,7 @@ Micro, add the following to the DEFINES PROJECT property:
 #define BT_SERIAL						Serial1
 
 /**** i2c ***************************************************************/
-#define I2C_RATE						I2C_RATE_100	// i2c rate
+#define I2C_RATE						I2C_RATE_800	// i2c rate
 #define SLAVE1_ADDRESS					0x31			// slave1 address
 #define SLAVE2_ADDRESS					0x32			// slave2 address
 
@@ -476,6 +476,7 @@ void mainLoop(){
 	lineNumber = __LINE__;
 	// read slave1	
 	if (stat.slave1 == I2C_STAT_SUCCESS){
+		Serial.println("readingslave");
 		lineNumber = __LINE__;
 		stat.slave1 = I2CGet(SLAVE1_ADDRESS, COMMAND_ANGLE_FLOAT, 4, IRAngle);
 		lineNumber = __LINE__;
@@ -544,7 +545,7 @@ void mainLoop(){
 			allowableRangeMin = -180;
 			targetDirection = -90;
 		}
-		Serial.println("on white");
+		//Serial.println("on white");
 	}
 	else{
 		// on green
@@ -565,19 +566,19 @@ void mainLoop(){
 		if (IRStrength > 105){
 			targetSpeed = MAXSPEED;		
 			bool rotation_dir;
-			Serial.println("lOrbitType:" + String(lOrbitType));
+			//Serial.println("lOrbitType:" + String(lOrbitType));
 			if (lOrbitType == 0){
 				if (IRAngleAdv > 0){
 					// ball on right. Must do a right orbit
 					rotation_dir = false;
 					targetDirection = getOrbit_CW_CCW(IRAngleAdv, rotation_dir);
-					Serial.println("right");
+					//Serial.println("right");
 				}
 				else{
 					// ball on left. Must do a left orbit
 					rotation_dir = true;
 					targetDirection = getOrbit_CW_CCW(IRAngleAdv, rotation_dir);
-					Serial.println("left");
+					//Serial.println("left");
 				}
 				// if (targetDirection < allowableRangeMin || targetDirection > allowableRangeMax){
 				// 	if (lRobotLight == 1){
@@ -675,7 +676,7 @@ void mainLoop(){
 			else{
 				targetDirection = 90;
 			}
-			Serial.println("on white");
+			//Serial.println("on white");
 		}
 	}
 	// now move the robot
@@ -726,6 +727,12 @@ void loop()
 	teensy after WATCHDOG_INTERVAL us */
 	watchDog.begin(reset, WATCHDOG_INTERVAL);
 #endif
+	Serial.print(pgmFreq);
+	Serial.print(",");
+	bearingTo180(IRAngle);
+	Serial.print(IRAngleAdv);
+	Serial.print(",");
+	Serial.println(IRAngle);
 	timings();
 	mainLoop();
 #if(DEBUG_SERIAL)
@@ -892,7 +899,7 @@ inline void movePIDForward(float dir, uint8_t speed, float offset){
 	
 	ldir = dir;
 	lSpeed = speed;
-	Serial.println("rotational_correction" + String(rotational_correction));
+	//Serial.println("rotational_correction" + String(rotational_correction));
 	rotational_correction = PDCalc(cmpsBearing, offset);
 	if ((dir > -10 && dir <= 0) || (dir > 0 && dir < 10)){
 		bearingTo360(dir);
@@ -977,7 +984,7 @@ inline float getOrbit_CCW(float dir){
 
 inline float getOrbit_CW(float dir){
 	bearingTo180(dir);
-	Serial.println("DIR RIRJ:" + String(dir));
+	//Serial.println("DIR RIRJ:" + String(dir));
 	if (dir > 0){
 		dir = getOrbit(dir) + 180;
 	}
