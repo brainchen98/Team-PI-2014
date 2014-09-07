@@ -540,6 +540,7 @@ void mainLoop(){
 	else if (getLightColour(lightReading1) == WHITE && getLightColour(lightReading2) == WHITE){
 		// ???
 		if (lRobotLight == 1){
+			//testsetsoirhg
 			allowableRangeMin = 0;
 			allowableRangeMax = 180;
 			targetDirection = 90;
