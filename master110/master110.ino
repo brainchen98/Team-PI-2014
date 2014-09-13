@@ -4,7 +4,7 @@ Master code for TEAM PI.
 Created by Brian Chen 03/08/2014
 Last Modified by Brian Chen 10/08/2014 8:14:59 PM
 ... Forever modified by Brian Chen.
-Test push
+
 Changelog:
 	0.10 - Initial version. Basic i2c functionality between slave1 and
 			master for TSOP1140s
@@ -25,20 +25,17 @@ Changelog:
 	0.90 - 
 	1.00 - Implemented out avoiding. Implemented newer version of omnidrive
 			with acceleration to prevent slipping
+	1.10 - Optimised out avoiding. Implemented i2c timeout from i2c_t3 library.
 
 
-Beta 1.00 (C) TEAM PI 2014
+
+Beta 1.10 (C) TEAM PI 2014
 
 To compile this program for Teensy 3.0 in VS or Atmel Studio with Visual 
 Micro, add the following to the DEFINES PROJECT property:
 	F_CPU=48000000;USB_SERIAL;LAYOUT_US_ENGLISH
-
-	Test commit
-
 ------------------------------------------------------------------------*/
-
 #include <i2c_t3.h>
-//#include <Wire.h>
 #include <EEPROM.h>
 //#include <EEPROMAnything.h>
 #include <i2cAnything.h>
@@ -73,7 +70,7 @@ Micro, add the following to the DEFINES PROJECT property:
 
 #define LCD_DEBUG						false
 
-#define DEBUG_SERIAL					false
+#define DEBUG_SERIAL					true
 #define DEBUGSERIAL_BAUD				115200
 
 #define BT_TX							0
@@ -81,7 +78,7 @@ Micro, add the following to the DEFINES PROJECT property:
 #define BT_SERIAL						Serial1
 
 /**** i2c ***************************************************************/
-#define I2C_RATE						I2C_RATE_800	// i2c rate
+#define I2C_RATE						I2C_RATE_400	// i2c rate
 #define SLAVE1_ADDRESS					0x31			// slave1 address
 #define SLAVE2_ADDRESS					0x32			// slave2 address
 
@@ -166,10 +163,14 @@ Micro, add the following to the DEFINES PROJECT property:
 #define PID_UPDATE_RATE					75
 
 /**** Location **********************************************************/
-#define RIGHT 							true
-#define LEFT 							false
-#define TOP 							true
-#define BOTTOM 							false
+#define FIELD 							0
+#define CORNER_TOP						1
+#define CORNER_BOTTOM					2
+#define L_SIDE							3
+#define L_EDGE							4
+#define R_SIDE							5
+#define R_EDGE							6
+
 
 /*************************************************************************
 ***** end #defines section ***********************************************
@@ -197,6 +198,9 @@ debugSerial dSerial;
 
 float IRAngle = 0;
 float IRAngleAdv = 0;
+float IRAngleRelative = 0;
+float IRAngleAdvRelative = 0;
+
 uint8_t IRStrength = 0;
 uint8_t IRResults[TSOP_COUNT];
 
@@ -284,6 +288,7 @@ float proportional = 0, derivative = 0, lDerivative = 0;
 
 /*movement limitations. The robot is only allowed to move between these angles.
 Values are changed real time depending on the location of the robot.*/
+uint8_t location = FIELD;
 float allowableRangeMin = -180, allowableRangeMax = 180;
 /* previous orbit direction.
 	0 - doesn't matter
@@ -291,6 +296,8 @@ float allowableRangeMin = -180, allowableRangeMax = 180;
 	2 - CCW
 */
 uint8_t lOrbitType = 0;
+float dirToGetOut = 0;
+bool overideToGetOut = false;
 
 /*************************************************************************
 ***** goals **************************************************************
@@ -344,37 +351,6 @@ uint8_t lRobotLight = 0;
 unsigned long lineNumber = 0;		// line number for crash debugging
 uint8_t previousCrash = 255;
 
-
-//
-void mainLoop();
-//
-bool chkErr();
-void chkStatus();
-inline bool blinkLED();
-void timings();
-float PDCalc(float input, float offset);
-inline float diff(float angle1, float angle2);
-inline void movePIDForward(float dir, uint8_t speed, float offset);
-inline float getHalfOrbit(float dir);
-inline float getOrbit_CCW(float dir);
-inline float getOrbit_CW(float dir);
-float getOrbit(float dir);
-inline void kick();
-inline void endKick();
-inline void getKickState();
-inline void initI2C();
-uint8_t checkConnection(uint16_t address);
-uint8_t lcdWrite(int16_t x, int16_t y, String str);
-uint8_t lcdErase();
-uint8_t lcdDrawLine(int16_t x1, int16_t y1, int16_t x2, int16_t y2);
-uint8_t lcdDrawRect(int16_t x1, int16_t y1, int16_t x2, int16_t y2);
-void reset();
-void reset_2();
-void resetWatchDog();
-inline void bearingTo360(float &bearing);
-inline void bearingTo180(float &bearing);
-void serialDebug();
-void serialStatus();
 
 /*************************************************************************
 ***** Start of main code**************************************************
@@ -478,7 +454,6 @@ void mainLoop(){
 	lineNumber = __LINE__;
 	// read slave1	
 	if (stat.slave1 == I2C_STAT_SUCCESS){
-		Serial.println("readingslave");
 		lineNumber = __LINE__;
 		stat.slave1 = I2CGet(SLAVE1_ADDRESS, COMMAND_ANGLE_FLOAT, 4, IRAngle);
 		lineNumber = __LINE__;
@@ -494,10 +469,8 @@ void mainLoop(){
 		stat.slave2 = I2CGetHL(SLAVE2_ADDRESS, COMMAND_LSENSOR1, lightReading1);
 		stat.slave2 = I2CGetHL(SLAVE2_ADDRESS, COMMAND_LSENSOR2, lightReading2);
 		stat.slave2 = I2CGetHL(SLAVE2_ADDRESS, COMMAND_GOAL_ANGLE, goalAngle);
-		uint16_t goalX;
-		stat.slave2 = I2CGetHL(SLAVE2_ADDRESS, COMMAND_GOAL_X, goalX);
-		lightReading2 = 0;
-		lightReading1 = 0;
+		// uint16_t goalX;
+		// stat.slave2 = I2CGetHL(SLAVE2_ADDRESS, COMMAND_GOAL_X, goalX);
 	}
 	lineNumber = __LINE__;
 	// read ultrasonics
@@ -512,51 +485,57 @@ void mainLoop(){
 	/*************************************************************************
 	***** logic** ************************************************************
 	*************************************************************************/
+	bearingTo180(IRAngle);
 	bearingTo180(IRAngleAdv);
+
+	IRAngleRelative = IRAngle + cmpsBearing;
+	IRAngleAdvRelative = IRAngleAdv + cmpsBearing;
 
 	lineNumber = __LINE__;
 	ballInPos = false;
 	bool ballInKickAngle = (IRAngleAdv > -15 && IRAngleAdv < 15);
 
 	// out detection
-	// reset allowablRange
-	allowableRangeMin = -180;
-	allowableRangeMax = 180;
-	//lightReading1 = 1000;
+	getLocation();
+	overideToGetOut = false;
 
-	// colour detection
-	if (getLightColour(lightReading1) == WHITE && getLightColour(lightReading2) != WHITE){
-		// on left edge of field
-		allowableRangeMin = 0;
-		allowableRangeMax = 180;
-		lRobotLight = 1;
-	}
-	else if (getLightColour(lightReading1) != WHITE && getLightColour(lightReading2) == WHITE){
-		// on left edge of field		
-		allowableRangeMax = 0;
-		allowableRangeMin = -180;
-		lRobotLight = 2;
-	}
-	else if (getLightColour(lightReading1) == WHITE && getLightColour(lightReading2) == WHITE){
-		// ???
-		if (lRobotLight == 1){
-			//testsetsoirhgsd
+	location = R_SIDE;
+	overideToGetOut = true;
+	switch (location){
+		case FIELD:	break;
+		case L_EDGE:
 			allowableRangeMin = 0;
 			allowableRangeMax = 180;
-			targetDirection = 90;
-		}
-		else{
-			allowableRangeMax = 0;
+			dirToGetOut = 90;
+			break;
+		case L_SIDE:
+			allowableRangeMin = 0;
+			allowableRangeMax = 180;
+			dirToGetOut = 90;
+			break;
+		case R_EDGE:
 			allowableRangeMin = -180;
-			targetDirection = -90;
-		}
-		//Serial.println("on white");
+			allowableRangeMax = 0;
+			dirToGetOut = -90;
+			break;
+		case R_SIDE:
+			allowableRangeMin = -180;
+			allowableRangeMax = 0;
+			dirToGetOut = -90;
+			break;
+		case CORNER_BOTTOM:
+			allowableRangeMin = -10;
+			allowableRangeMax = 10;
+			dirToGetOut = 0;
+			break;
+		case CORNER_TOP:
+			allowableRangeMin = 170;
+			allowableRangeMax = 190;
+			dirToGetOut = 180;
+			break;
+		default: break;
 	}
-	else{
-		// on green
-		lRobotLight = 0;
-	}
-
+	
 	if (lOrbitType != 0){
 		if (IRAngleAdv > -30 && IRAngleAdv < 30){
 			// pretty much completed the orbit. Don't care about the previos orbit type.
@@ -588,21 +567,48 @@ void mainLoop(){
 		else{
 			rotation_dir = false;
 		}
-		targetDirection = getOrbit_CW_CCW(IRAngleAdv, rotation_dir);		
+		targetDirection = getOrbit_CW_CCW(IRAngleAdv, rotation_dir);	
+
+		if (!isBetween(targetDirection, allowableRangeMin, allowableRangeMax)){
+			// try other orbit
+			rotation_dir = !rotation_dir;
+			targetDirection = getOrbit_CW_CCW(IRAngleAdv, rotation_dir);
+
+			if (!isBetween(targetDirection, allowableRangeMin, allowableRangeMax)){
+				// try chasing ball if in "front"
+				if (!isBetween(IRAngleAdvRelative, -90, 90)){
+					// ball in front
+					targetDirection = IRAngleAdv;
+					if(!isBetween(targetDirection, allowableRangeMin, allowableRangeMax)){
+						// still not working. Let's just get out of where we are
+						targetDirection = dirToGetOut;
+					}
+				}
+				else{
+					// still not working. Let's just get out of where we are
+					targetDirection = dirToGetOut;
+				}
+			}
+		}	
 	}
 	else if (IRStrength > 40){
 		targetDirection = IRAngleAdv;
 		targetSpeed = MAXSPEED;
-		if (targetDirection < allowableRangeMin || targetDirection > allowableRangeMax){
-			// still no hope.
-			targetDirection = 0;
-			targetSpeed = 0;
+		if (!isBetween(targetDirection, allowableRangeMin, allowableRangeMax)){
+			// still not working. Let's just get out of where we are
+			targetDirection = dirToGetOut;
 		}
 	}
 	else{
 		// ball not found
-		targetDirection = 0;
-		targetSpeed = 0;
+		if (overideToGetOut){
+			targetDirection = dirToGetOut;
+			targetSpeed = MAXSPEED;
+		}
+		else{
+			targetDirection = 0;
+			targetSpeed = 0;
+		}
 	}
 	
 	// now move the robot
@@ -613,19 +619,11 @@ void mainLoop(){
 	*************************************************************************/
 
 	getKickState();		// check kick state
-	if (isKicking){
-		digitalWrite(KICK_SIG, HIGH);
-	}
-	else{
-		digitalWrite(KICK_SIG, LOW);
-	}
+	if (isKicking)	{ digitalWrite(KICK_SIG, HIGH);}
+	else			{ digitalWrite(KICK_SIG, LOW); }
 	
-	if (kickReady && !isKicking && ballInPos){
-		kick();
-	}
-	else if (ana < 10 && isKicking){
-		endKick();
-	}
+	if (kickReady && !isKicking && ballInPos)	{ kick(); }
+	else if (ana < 10 && isKicking)				{ endKick(); }
 
 	lineNumber = __LINE__;
 
@@ -645,7 +643,7 @@ void mainLoop(){
 	lineNumber = __LINE__;
 }
 
-/* basic loop structure. Like the "bones" of the program */
+/* basic loop structure. The "spin" of the program */
 void loop()
 {
 	
@@ -671,36 +669,29 @@ void loop()
 }
 
 bool chkErr(){
-	if (stat.i2cLine != 0){ return false; }
-	if (stat.cmps != 0){ return false; }
-	if (stat.slave1 != 0){ return false; }
-	if (stat.slave2 != 0){ return false; }
-	if (stat.motors != 0){ return false; }
+	if (stat.i2cLine != 0)	{ return false; }
+	if (stat.cmps != 0)		{ return false; }
+	if (stat.slave1 != 0)	{ return false; }
+	if (stat.slave2 != 0)	{ return false; }
+	if (stat.motors != 0)	{ return false; }
 	return true;
 }
 
 void chkStatus(){
-	stat.i2cLine = Wire.status();
-	stat.slave1 = checkConnection(SLAVE1_ADDRESS);
-	stat.slave2 = checkConnection(SLAVE2_ADDRESS);
-	stat.cmps = checkConnection(CMPS_ADDRESS);
-	stat.usFront = checkConnection(US_FRONT_ADDRESS);
-	stat.usRight = checkConnection(US_RIGHT_ADDRESS);
-	stat.usLeft = checkConnection(US_LEFT_ADDRESS);
+	stat.i2cLine 	= Wire.status();
+	stat.slave1 	= checkConnection(SLAVE1_ADDRESS);
+	stat.slave2 	= checkConnection(SLAVE2_ADDRESS);
+	stat.cmps 		= checkConnection(CMPS_ADDRESS);
+	stat.usFront 	= checkConnection(US_FRONT_ADDRESS);
+	stat.usRight 	= checkConnection(US_RIGHT_ADDRESS);
+	stat.usLeft 	= checkConnection(US_LEFT_ADDRESS);
 }
 
 inline bool blinkLED(){
 	if (nowMillis - lBlinkTime >= waitTime){
-		if (on){
-			// turn off
-			digitalWrite(LED, LOW);
-			on = false;
-		}
-		else{
-			// turn on
-			digitalWrite(LED, HIGH);
-			on = true;
-		}
+		on = !on;
+		if (on)	{ digitalWrite(LED, LOW); }
+		else	{ digitalWrite(LED, HIGH); }
 		lBlinkTime = nowMillis;
 		return true;
 	}
@@ -740,7 +731,9 @@ void timings(){
 	}
 	if (nowMillis - lastCMPSTime > 1000 / CMPS_UPDATE_RATE){
 		// read cmps to get corrected bearing (getBearingR() gets corrected bearing from offset)
-		stat.cmps = cmps.getBearingR(cmpsBearing);
+		if (stat.cmps == I2C_STAT_SUCCESS){
+			stat.cmps = cmps.getBearingR(cmpsBearing);
+		}
 	}
 	
 	if (nowMillis - lastTargetBearingUpdate > 1){
@@ -759,14 +752,34 @@ void timings(){
 ***** Light Sensors ********************************************
 *************************************************************************/
 inline uint8_t getLightColour(int16_t lReading){
-	if(lReading > LREF_WHITE){
-		return WHITE;
+	if(lReading > LREF_WHITE)		{ return WHITE; }
+	else if(lReading > LREF_GREEN)	{ return GREEN; }
+	else							{ return BLACK; }
+}
+
+inline void getLocation(){
+	location = FIELD;
+	if (getLightColour(lightReading1) == WHITE && getLightColour(lightReading2 != WHITE)){
+		// on left edge
+		location = L_EDGE;
 	}
-	else if(lReading > LREF_GREEN){
-		return GREEN;
+	else if (getLightColour(lightReading1) != WHITE && getLightColour(lightReading2) == WHITE){
+		// on right edge
+		location = R_EDGE;
 	}
-	else{
-		return BLACK;
+	else if (getLightColour(lightReading1) == WHITE && getLightColour(lightReading2) == WHITE){
+		if (usLeftRange <= 20 && usRightRange <= 20){
+			// in back corner
+			location = CORNER_BOTTOM;
+		}
+		else if (usLeftRange <= 30 && usRightRange > 30){
+			// on left side
+			location = L_SIDE;
+		}
+		else if (usLeftRange > 30 && usLeftRange <= 30){
+			// on right side
+			location = R_SIDE;
+		}
 	}
 }
 
@@ -795,8 +808,7 @@ float PDCalc(float input, float offset){
 		derivative = derivative / 2 + lDerivative / 2;
 		lDerivative = derivative;
 		lInput = input;
-		lastPIDTime = micros();
-		
+		lastPIDTime = micros();		
 	}
 	if ((error > 90 || error < -90) && derivative < 10){
 		output = (kp*proportional);
@@ -966,7 +978,7 @@ inline void initI2C(){
 
 uint8_t checkConnection(uint16_t address){
 	Wire.beginTransmission(address);
-	return Wire.endTransmission();
+	return Wire.endTransmission(I2C_STOP, 500);
 }
 
 /*************************************************************************
@@ -1084,6 +1096,24 @@ inline void bearingTo180(float &bearing){
 	while (bearing > 180){
 		bearing -= 360;
 	}
+}
+
+inline bool isBetween(float angle, float lower, float upper){
+	bearingTo360(lower);
+	bearingTo360(upper);
+
+	if (lower > upper){
+		if (angle >= lower && angle <= 360){
+			return true;
+		}
+		if (angle >= 0 && angle <= upper){
+			return true;
+		}
+	}
+	else{
+
+	}
+	return false;
 }
 
 /*************************************************************************

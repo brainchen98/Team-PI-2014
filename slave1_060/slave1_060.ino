@@ -37,7 +37,7 @@
 //tsop///////////////////////////////////////////////////////////////
 #define TSOP_COUNT 20   //number of tsops
 #define UNLOCK_PIN 0    //pin that powers tsops
-#define TSOP_WAIT_TIME 2500		//time between unlocking tsops in milliseconds
+#define TSOP_WAIT_TIME 500		//time between unlocking tsops in milliseconds
 /////////////////////////////////////////////////////////////////////
 
 unsigned long nowMillis = 0;
@@ -97,7 +97,7 @@ void loop(){
     timings();    
     //main stuff
 	tsop.getAll(results);
-	results[0] *= 1.15;
+	//results[0] *= 1.15;
 	tsop.getBest(results, bIndex, b);
 	//tsop.getAnglePairing(results, angleAdv);
 	tsop.getStrength(results, strength);
