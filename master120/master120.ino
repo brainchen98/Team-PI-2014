@@ -21,7 +21,7 @@ Changelog:
 	0.70 - Implemented orbit. Removed mpu9150 due to frequent crashing and 
 			inaccurate data.
 	0.80 - Implemented solenoid kicking. Decreased i2c rate to prevent
-			crashing.s
+			crashing.
 	0.90 - 
 	1.00 - Implemented out avoiding. Implemented newer version of omnidrive
 			with acceleration to prevent slipping
