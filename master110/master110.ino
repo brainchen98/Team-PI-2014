@@ -297,10 +297,7 @@ float allowableRangeMin = -180, allowableRangeMax = 180;
 */
 uint8_t lOrbitType = 0;
 float dirToGetOut = 0;
-<<<<<<< HEAD
 bool overideToGetOut = false;
-=======
->>>>>>> e8cc7ee076593f12117c9c211b8eb1fd2aaabc9d
 
 /*************************************************************************
 ***** goals **************************************************************
@@ -500,13 +497,10 @@ void mainLoop(){
 
 	// out detection
 	getLocation();
-<<<<<<< HEAD
 	overideToGetOut = false;
-
 	location = R_SIDE;
 	overideToGetOut = true;
-=======
->>>>>>> e8cc7ee076593f12117c9c211b8eb1fd2aaabc9d
+	
 	switch (location){
 		case FIELD:	break;
 		case L_EDGE:
@@ -695,10 +689,7 @@ void chkStatus(){
 
 inline bool blinkLED(){
 	if (nowMillis - lBlinkTime >= waitTime){
-<<<<<<< HEAD
 		on = !on;
-=======
->>>>>>> e8cc7ee076593f12117c9c211b8eb1fd2aaabc9d
 		if (on)	{ digitalWrite(LED, LOW); }
 		else	{ digitalWrite(LED, HIGH); }
 		lBlinkTime = nowMillis;
