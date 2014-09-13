@@ -56,7 +56,7 @@ Micro, add the following to the DEFINES PROJECT property:
 *************************************************************************/
 
 /**** general ***********************************************************/
-#define MAXSPEED						110
+#define MAXSPEED						200
 #define KICK_ENABLED					true
 
 #define HIGHVOLT_PIN					11	//15v reference pin.
@@ -81,7 +81,7 @@ Micro, add the following to the DEFINES PROJECT property:
 #define BT_SERIAL						Serial1
 
 /**** i2c ***************************************************************/
-#define I2C_RATE						I2C_RATE_800	// i2c rate
+#define I2C_RATE						I2C_RATE_100	// i2c rate
 #define SLAVE1_ADDRESS					0x31			// slave1 address
 #define SLAVE2_ADDRESS					0x32			// slave2 address
 
@@ -478,7 +478,6 @@ void mainLoop(){
 	lineNumber = __LINE__;
 	// read slave1	
 	if (stat.slave1 == I2C_STAT_SUCCESS){
-		Serial.println("readingslave");
 		lineNumber = __LINE__;
 		stat.slave1 = I2CGet(SLAVE1_ADDRESS, COMMAND_ANGLE_FLOAT, 4, IRAngle);
 		lineNumber = __LINE__;
@@ -729,7 +728,7 @@ void loop()
 	teensy after WATCHDOG_INTERVAL us */
 	watchDog.begin(reset, WATCHDOG_INTERVAL);
 #endif
-	Serial.print(pgmFreq);
+	Serial.print(millis());
 	Serial.print(",");
 	bearingTo180(IRAngle);
 	Serial.print(IRAngleAdv);
