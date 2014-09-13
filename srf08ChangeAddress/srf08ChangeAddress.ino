@@ -30,7 +30,7 @@ new address of srf08. Acceptable addresses are
 				252		0xFC
 				254		0xFE
 */
-#define NEW_ADDRESS 0xE2
+#define NEW_ADDRESS 0xE4
 
 SRF08 srf(ORIGINAL_ADDRESS);
 

@@ -2,7 +2,7 @@
 
 Master code for TEAM PI.
 Created by Brian Chen 03/08/2014
-Last Modified by Brian Chen 10/08/2014 8:14:59 PM
+Last Modified by Brian Chen 13/09/2014 4:54:07 PM
 ... Forever modified by Brian Chen.
 
 Changelog:
@@ -26,10 +26,12 @@ Changelog:
 	1.00 - Implemented out avoiding. Implemented newer version of omnidrive
 			with acceleration to prevent slipping
 	1.10 - Optimised out avoiding. Implemented i2c timeout from i2c_t3 library.
-
-
+			Implemented location detection (with the location variable). Implemented
+			overide to go back into the field.
 
 Beta 1.10 (C) TEAM PI 2014
+
+http://nonterminating.com/
 
 To compile this program for Teensy 3.0 in VS or Atmel Studio with Visual 
 Micro, add the following to the DEFINES PROJECT property:
@@ -178,7 +180,7 @@ Micro, add the following to the DEFINES PROJECT property:
 
 #if(WATCHDOG_ENABLED)
 IntervalTimer watchDog;	//timer for watchdog to get out of crash
-unsigned long WATCHDOG_INTERVAL = 1000000;	//watchdog interval in ms
+unsigned long WATCHDOG_INTERVAL = 100000;	//watchdog interval in ms
 #endif
 
 unsigned long nowMillis = 0;
@@ -480,6 +482,10 @@ void mainLoop(){
 	if (stat.usRight == I2C_STAT_SUCCESS){
 		usRight.autoGetStartIfCan(usRightRange);
 	}
+	if (stat.usLeft == I2C_STAT_SUCCESS){
+		usLeft.autoGetStartIfCan(usLeftRange);
+	}
+
 	lineNumber = __LINE__;
 
 	/*************************************************************************
@@ -498,9 +504,9 @@ void mainLoop(){
 	// out detection
 	getLocation();
 	overideToGetOut = false;
-	location = R_SIDE;
+	location = L_SIDE;
 	overideToGetOut = true;
-	
+
 	switch (location){
 		case FIELD:	break;
 		case L_EDGE:
