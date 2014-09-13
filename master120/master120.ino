@@ -48,7 +48,7 @@ Micro, add the following to the DEFINES PROJECT property:
 
 #include <pwmMotor.h>
 #include <omnidrive.h>
-#include <debugSerial.h> 
+#include <debugSerial.h>
 
 #include <orbit.h>
 
@@ -57,7 +57,7 @@ Micro, add the following to the DEFINES PROJECT property:
 *************************************************************************/
 
 /**** general ***********************************************************/
-#define MAXSPEED						110
+#define MAXSPEED						80
 #define KICK_ENABLED					true
 
 #define HIGHVOLT_PIN					11	//15v reference pin.
@@ -74,7 +74,7 @@ Micro, add the following to the DEFINES PROJECT property:
 
 #define LCD_DEBUG						false
 
-#define DEBUG_SERIAL					true
+#define DEBUG_SERIAL					false
 #define DEBUGSERIAL_BAUD				115200
 
 #define BT_TX							0
@@ -170,10 +170,10 @@ Micro, add the following to the DEFINES PROJECT property:
 #define FIELD 							0
 #define CORNER_TOP						1
 #define CORNER_BOTTOM					2
-#define L_SIDE							3
-#define L_EDGE							4
-#define R_SIDE							5
-#define R_EDGE							6
+#define SIDE_L							3
+#define EDGE_L							4
+#define SIDE_R							5
+#define EDGE_R							6
 
 
 /*************************************************************************
@@ -506,27 +506,31 @@ void mainLoop(){
 	// out detection
 	getLocation();
 	overideToGetOut = false;
-	location = L_SIDE;
-	overideToGetOut = true;
+	location = FIELD;
+	//overideToGetOut = true;
 
 	switch (location){
-		case FIELD:	break;
-		case L_EDGE:
+		case FIELD:	
+			allowableRangeMin = 0;
+			allowableRangeMax = 359.9;
+			dirToGetOut = 0;
+			break;
+		case EDGE_L:
 			allowableRangeMin = 0;
 			allowableRangeMax = 180;
 			dirToGetOut = 90;
 			break;
-		case L_SIDE:
+		case SIDE_L:
 			allowableRangeMin = 0;
 			allowableRangeMax = 180;
 			dirToGetOut = 90;
 			break;
-		case R_EDGE:
+		case EDGE_R:
 			allowableRangeMin = -180;
 			allowableRangeMax = 0;
 			dirToGetOut = -90;
 			break;
-		case R_SIDE:
+		case SIDE_R:
 			allowableRangeMin = -180;
 			allowableRangeMax = 0;
 			dirToGetOut = -90;
@@ -575,14 +579,19 @@ void mainLoop(){
 		else{
 			rotation_dir = false;
 		}
-		targetDirection = getOrbit_CW_CCW(IRAngleAdv, rotation_dir);	
+		//targetDirection = getOrbit_CW_CCW(IRAngleAdv, rotation_dir);	
+		targetDirection = getOrbit_CW_CCW(IRAngleAdvRelative, rotation_dir) - cmpsBearing;
 
 		if (!isBetween(targetDirection, allowableRangeMin, allowableRangeMax)){
+			Serial.print("FIRST ORBIT NOT BETWEEN ");
+			Serial.println(targetDirection);
 			// try other orbit
 			rotation_dir = !rotation_dir;
-			targetDirection = getOrbit_CW_CCW(IRAngleAdv, rotation_dir);
+			targetDirection = getOrbit_CW_CCW(IRAngleAdvRelative, rotation_dir) - cmpsBearing;
 
 			if (!isBetween(targetDirection, allowableRangeMin, allowableRangeMax)){
+				Serial.print("SECOND ORBIT NOT BETWEEN ");
+				Serial.println(targetDirection);
 				// try chasing ball if in "front"
 				if (!isBetween(IRAngleAdvRelative, -90, 90)){
 					// ball in front
@@ -769,11 +778,11 @@ inline void getLocation(){
 	location = FIELD;
 	if (getLightColour(lightReading1) == WHITE && getLightColour(lightReading2 != WHITE)){
 		// on left edge
-		location = L_EDGE;
+		location = EDGE_L;
 	}
 	else if (getLightColour(lightReading1) != WHITE && getLightColour(lightReading2) == WHITE){
 		// on right edge
-		location = R_EDGE;
+		location = EDGE_R;
 	}
 	else if (getLightColour(lightReading1) == WHITE && getLightColour(lightReading2) == WHITE){
 		if (usLeftRange <= 20 && usRightRange <= 20){
@@ -782,11 +791,11 @@ inline void getLocation(){
 		}
 		else if (usLeftRange <= 30 && usRightRange > 30){
 			// on left side
-			location = L_SIDE;
+			location = SIDE_L;
 		}
 		else if (usLeftRange > 30 && usLeftRange <= 30){
 			// on right side
-			location = R_SIDE;
+			location = SIDE_R;
 		}
 	}
 }
@@ -1107,6 +1116,7 @@ inline void bearingTo180(float &bearing){
 }
 
 inline bool isBetween(float angle, float lower, float upper){
+	bearingTo360(angle);
 	bearingTo360(lower);
 	bearingTo360(upper);
 
@@ -1119,7 +1129,9 @@ inline bool isBetween(float angle, float lower, float upper){
 		}
 	}
 	else{
-
+		if (angle >= lower && angle <= upper){
+			return true;
+		}
 	}
 	return false;
 }
