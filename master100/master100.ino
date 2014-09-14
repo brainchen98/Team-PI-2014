@@ -56,7 +56,7 @@ Micro, add the following to the DEFINES PROJECT property:
 *************************************************************************/
 
 /**** general ***********************************************************/
-#define MAXSPEED						200
+#define MAXSPEED						90
 #define KICK_ENABLED					true
 
 #define HIGHVOLT_PIN					11	//15v reference pin.

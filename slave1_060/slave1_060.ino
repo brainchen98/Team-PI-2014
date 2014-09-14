@@ -37,7 +37,7 @@
 //tsop///////////////////////////////////////////////////////////////
 #define TSOP_COUNT 20   //number of tsops
 #define UNLOCK_PIN 0    //pin that powers tsops
-#define TSOP_WAIT_TIME 500		//time between unlocking tsops in milliseconds
+#define TSOP_WAIT_TIME 800		//time between unlocking tsops in milliseconds
 /////////////////////////////////////////////////////////////////////
 
 unsigned long nowMillis = 0;

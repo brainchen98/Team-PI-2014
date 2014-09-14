@@ -57,7 +57,7 @@ Micro, add the following to the DEFINES PROJECT property:
 *************************************************************************/
 
 /**** general ***********************************************************/
-#define MAXSPEED						80
+#define MAXSPEED						255
 #define KICK_ENABLED					true
 
 #define HIGHVOLT_PIN					11	//15v reference pin.
@@ -280,8 +280,10 @@ int16_t rotational_correction; // correction applied to each individual motor
 // float kd = 125; //derivative constant. As kd increases, overshoot decreases
 // float kp = 0.45;
 // float kd = 40;
-float kp = 0.6;
-float kd = 120;
+// float kp = 0.6;
+// float kd = 120;
+float kp = 0;
+float kd = 0;
 
 float error = 0, lInput = 0;
 float proportional = 0, derivative = 0, lDerivative = 0;
@@ -491,14 +493,17 @@ void mainLoop(){
 	lineNumber = __LINE__;
 
 	/*************************************************************************
-	***** logic** ************************************************************
+	***** logic **************************************************************
 	*************************************************************************/
 	bearingTo180(IRAngle);
 	bearingTo180(IRAngleAdv);
 
 	IRAngleRelative = IRAngle + cmpsBearing;
 	IRAngleAdvRelative = IRAngleAdv + cmpsBearing;
-
+	bearingTo180(IRAngleAdvRelative);
+	bearingTo180(IRAngleAdvRelative);
+	Serial.println(IRAngleAdvRelative);
+	
 	lineNumber = __LINE__;
 	ballInPos = false;
 	bool ballInKickAngle = (IRAngleAdv > -15 && IRAngleAdv < 15);
@@ -512,7 +517,7 @@ void mainLoop(){
 	switch (location){
 		case FIELD:	
 			allowableRangeMin = 0;
-			allowableRangeMax = 359.9;
+			allowableRangeMax = 359.9999;
 			dirToGetOut = 0;
 			break;
 		case EDGE_L:
@@ -559,12 +564,11 @@ void mainLoop(){
 		ballInPos = true;
 	}
 	
-	if (IRStrength > 105){
-		targetSpeed = MAXSPEED;		
+	if (IRStrength > 105){	
 		bool rotation_dir;
 
 		if (lOrbitType == 0){
-			if (IRAngleAdv > 0){
+			if (IRAngleAdvRelative > 0){
 				// ball on right. Must do a right orbit
 				rotation_dir = false;
 			}
@@ -579,19 +583,18 @@ void mainLoop(){
 		else{
 			rotation_dir = false;
 		}
-		//targetDirection = getOrbit_CW_CCW(IRAngleAdv, rotation_dir);	
+		targetBearing = 90;
 		targetDirection = getOrbit_CW_CCW(IRAngleAdvRelative, rotation_dir) - cmpsBearing;
+		chkBoostSpeed();
+		
 
 		if (!isBetween(targetDirection, allowableRangeMin, allowableRangeMax)){
-			Serial.print("FIRST ORBIT NOT BETWEEN ");
-			Serial.println(targetDirection);
 			// try other orbit
 			rotation_dir = !rotation_dir;
+
 			targetDirection = getOrbit_CW_CCW(IRAngleAdvRelative, rotation_dir) - cmpsBearing;
 
 			if (!isBetween(targetDirection, allowableRangeMin, allowableRangeMax)){
-				Serial.print("SECOND ORBIT NOT BETWEEN ");
-				Serial.println(targetDirection);
 				// try chasing ball if in "front"
 				if (!isBetween(IRAngleAdvRelative, -90, 90)){
 					// ball in front
@@ -599,21 +602,27 @@ void mainLoop(){
 					if(!isBetween(targetDirection, allowableRangeMin, allowableRangeMax)){
 						// still not working. Let's just get out of where we are
 						targetDirection = dirToGetOut;
+						targetSpeed = MAXSPEED;
 					}
 				}
 				else{
 					// still not working. Let's just get out of where we are
 					targetDirection = dirToGetOut;
+					targetSpeed = MAXSPEED;
 				}
 			}
 		}	
 	}
 	else if (IRStrength > 40){
-		targetDirection = IRAngleAdv;
-		targetSpeed = MAXSPEED;
+		targetDirection = IRAngleAdv;		
+
 		if (!isBetween(targetDirection, allowableRangeMin, allowableRangeMax)){
 			// still not working. Let's just get out of where we are
 			targetDirection = dirToGetOut;
+			targetSpeed = MAXSPEED;
+		}
+		else{
+			chkBoostSpeed();
 		}
 	}
 	else{
@@ -669,14 +678,16 @@ void loop()
 	teensy after WATCHDOG_INTERVAL us */
 	watchDog.begin(reset, WATCHDOG_INTERVAL);
 #endif
-	Serial.print(pgmFreq);
-	Serial.print(",");
-	bearingTo180(IRAngle);
-	Serial.print(IRAngleAdv);
-	Serial.print(",");
-	Serial.println(IRAngle);
+	// Serial.print(pgmFreq);
+	// Serial.print(",");
+	// bearingTo180(IRAngle);
+	// Serial.print(IRAngleAdv);
+	// Serial.print(",");
+	// Serial.println(IRAngle);
 	timings();
 	mainLoop();
+	Serial.print("dir");
+	Serial.println(targetDirection);
 #if(DEBUG_SERIAL)
 	serialDebug();
 #endif
@@ -702,6 +713,7 @@ void chkStatus(){
 	stat.usFront 	= checkConnection(US_FRONT_ADDRESS);
 	stat.usRight 	= checkConnection(US_RIGHT_ADDRESS);
 	stat.usLeft 	= checkConnection(US_LEFT_ADDRESS);
+	Serial.println("stat.i2cLine " + String(stat.slave1));
 }
 
 inline bool blinkLED(){
@@ -850,12 +862,11 @@ inline float diff(float angle1, float angle2){
 }
 
 inline void movePIDForward(float dir, uint8_t speed, float offset){
-	float difference = diff(dir, ldir);
 	bearingTo180(dir);
 	
 	ldir = dir;
 	lSpeed = speed;
-	//Serial.println("rotational_correction" + String(rotational_correction));
+
 	rotational_correction = PDCalc(cmpsBearing, offset);
 	if ((dir > -10 && dir <= 0) || (dir > 0 && dir < 10)){
 		bearingTo360(dir);
@@ -880,25 +891,32 @@ inline void movePIDForward(float dir, uint8_t speed, float offset){
 	//robot.moveNoAccel(dir, speed, rotational_correction);
 }
 
+inline void movePIDForwardRelative(float dir, uint8_t speed, float offset){
+	dir -= cmpsBearing;
+	movePIDForward(dir, speed, offset);
+}
+
 inline float getOrbit(float dir){
 	bearingTo180(dir);
-	if (dir >= -10 && dir <= 10 && goalAngle>= -10 && goalAngle <= 10){
+	/*if (dir >= -10 && dir <= 10 && goalAngle>= -10 && goalAngle <= 10){
 		//leave direction as it is
 		dir = goalAngle;
 		targetSpeed = 200;
 	}
-	else if (dir >= -10 && dir <= 10){
+	else if (dir >= -20 && dir <= 20 && goalAngle>= -10 && goalAngle <= 10 && IRStrength > 150);
+	else */
+	if (dir >= -10 && dir <= 10){
 		dir = 0;
-		targetSpeed = 160;
+		//targetSpeed = 160;
 	}
 	else if (dir > 10 && dir <= 15){
 		dir += 10;
 	}
 	else if (dir > 15 && dir <= 20){
-		dir += 45;
+		dir += 25;
 	}
 	else if (dir > 20 && dir <= 40){
-		dir += 50;
+		dir += 45;
 	}
 	else if (dir > 40 && dir < 90){
 		dir += 55;
@@ -910,10 +928,10 @@ inline float getOrbit(float dir){
 		dir -= 10;
 	}
 	else if (dir < -15 && dir >= -20){
-		dir -= 45;
+		dir -= 25;
 	}
 	else if (dir < -20 && dir >= -40){
-		dir -= 50;
+		dir -= 45;
 	}
 	else if (dir < -40 && dir > -90){
 		dir -= 55;
@@ -951,11 +969,21 @@ inline float getOrbit_CW(float dir){
 	return dir;
 }
 
-float getOrbit_CW_CCW(float dir, bool rotation_dir){
+inline float getOrbit_CW_CCW(float dir, bool rotation_dir){
 	if (rotation_dir){
 		return getOrbit_CW(dir);
 	}
 	return getOrbit_CCW(dir);
+}
+
+inline void chkBoostSpeed(){
+	if (isBetween(IRAngleAdvRelative, -10 + targetBearing, 10 + targetBearing)){			
+		if (goalAngle>= -10 && goalAngle <= 10)	{ targetSpeed = 200; }
+		else 									{ targetSpeed = 160; }
+	}
+	else{
+		targetSpeed = MAXSPEED;
+	}
 }
 
 /*************************************************************************
