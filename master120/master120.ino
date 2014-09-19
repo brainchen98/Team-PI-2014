@@ -29,7 +29,7 @@ Changelog:
 			Implemented location detection (with the location variable). Implemented
 			overide to go back into the field.
 	1.20 - Implemented relative angular orbits. The robot can now orbit without
-			facing forwards.
+			facing forwards. Added supported for changing speeds with dip switches.
 
 Beta 1.20 (C) TEAM PI 2014
 
@@ -57,10 +57,12 @@ Micro, add the following to the DEFINES PROJECT property:
 *************************************************************************/
 
 /**** general ***********************************************************/
-#define MAXSPEED						255
+#define MAXSPEED						130
 #define KICK_ENABLED					true
+#define DIP_ENABLED						true
 
 #define HIGHVOLT_PIN					11	//15v reference pin.
+
 
 /**** teensy crash handling *********************************************/
 #define WATCHDOG_ENABLED				true
@@ -243,6 +245,8 @@ OMNIDRIVE robot(motorA, motorB, motorC, motorD);
 float targetBearing = 0; 	// simply where the angle the robot wants to face
 float targetDirection = 0;
 float ldir = 0;				// last actual direction
+
+uint8_t maxUserSpeed = MAXSPEED;
 uint8_t targetSpeed = MAXSPEED;
 uint8_t lSpeed = 0;
 
@@ -282,8 +286,8 @@ int16_t rotational_correction; // correction applied to each individual motor
 // float kd = 40;
 // float kp = 0.6;
 // float kd = 120;
-float kp = 0;
-float kd = 0;
+float kp = 0.5;
+float kd = 80;
 
 float error = 0, lInput = 0;
 float proportional = 0, derivative = 0, lDerivative = 0;
@@ -385,13 +389,16 @@ void setup()
 
 	dSerial.begin(DEBUGSERIAL_BAUD);
 
-	initI2C();
+	initDIP();
+	maxUserSpeed = getUserSpeed();	// get user speed from dip switches
 
-	delay(1000);						// delay to allow cmps10 to initialise
+	initI2C();						// initiate i2c
+
+	delay(1000);					// delay to allow cmps10 to initialise
 	
 	digitalWrite(LED, HIGH);
-	// now try and see if connected to all i2c devices
-	chkStatus();
+	
+	chkStatus();					// now try and see if connected to all i2c devices
 
 #if(LCD_DEBUG)
 	if (stat.slave2 == I2C_STAT_SUCCESS){
@@ -583,8 +590,8 @@ void mainLoop(){
 		else{
 			rotation_dir = false;
 		}
-		targetBearing = 90;
-		targetDirection = getOrbit_CW_CCW(IRAngleAdvRelative, rotation_dir) - cmpsBearing;
+	
+		targetDirection = getOrbit_CW_CCW(IRAngleAdvRelative, rotation_dir, 00) - cmpsBearing;
 		chkBoostSpeed();
 		
 
@@ -592,7 +599,7 @@ void mainLoop(){
 			// try other orbit
 			rotation_dir = !rotation_dir;
 
-			targetDirection = getOrbit_CW_CCW(IRAngleAdvRelative, rotation_dir) - cmpsBearing;
+			targetDirection = getOrbit_CW_CCW(IRAngleAdvRelative, rotation_dir, 0) - cmpsBearing;
 
 			if (!isBetween(targetDirection, allowableRangeMin, allowableRangeMax)){
 				// try chasing ball if in "front"
@@ -602,13 +609,13 @@ void mainLoop(){
 					if(!isBetween(targetDirection, allowableRangeMin, allowableRangeMax)){
 						// still not working. Let's just get out of where we are
 						targetDirection = dirToGetOut;
-						targetSpeed = MAXSPEED;
+						targetSpeed = maxUserSpeed;
 					}
 				}
 				else{
 					// still not working. Let's just get out of where we are
 					targetDirection = dirToGetOut;
-					targetSpeed = MAXSPEED;
+					targetSpeed = maxUserSpeed;
 				}
 			}
 		}	
@@ -619,7 +626,7 @@ void mainLoop(){
 		if (!isBetween(targetDirection, allowableRangeMin, allowableRangeMax)){
 			// still not working. Let's just get out of where we are
 			targetDirection = dirToGetOut;
-			targetSpeed = MAXSPEED;
+			targetSpeed = maxUserSpeed;
 		}
 		else{
 			chkBoostSpeed();
@@ -629,7 +636,7 @@ void mainLoop(){
 		// ball not found
 		if (overideToGetOut){
 			targetDirection = dirToGetOut;
-			targetSpeed = MAXSPEED;
+			targetSpeed = maxUserSpeed;
 		}
 		else{
 			targetDirection = 0;
@@ -638,6 +645,7 @@ void mainLoop(){
 	}
 	
 	// now move the robot
+	targetBearing = 0;
 	movePIDForward(targetDirection, targetSpeed, targetBearing);
 
 	/*************************************************************************
@@ -896,7 +904,7 @@ inline void movePIDForwardRelative(float dir, uint8_t speed, float offset){
 	movePIDForward(dir, speed, offset);
 }
 
-inline float getOrbit(float dir){
+inline float getOrbit(float dir, float targetPush){
 	bearingTo180(dir);
 	/*if (dir >= -10 && dir <= 10 && goalAngle>= -10 && goalAngle <= 10){
 		//leave direction as it is
@@ -905,84 +913,82 @@ inline float getOrbit(float dir){
 	}
 	else if (dir >= -20 && dir <= 20 && goalAngle>= -10 && goalAngle <= 10 && IRStrength > 150);
 	else */
-	if (dir >= -10 && dir <= 10){
+	if (isBetween(dir, -10 + targetPush, 10 + targetPush)){
 		dir = 0;
-		//targetSpeed = 160;
 	}
-	else if (dir > 10 && dir <= 15){
-		dir += 10;
+	else if (isBetween(dir, 10 + targetPush, 15 + targetPush)){
+		dir += 5;
 	}
-	else if (dir > 15 && dir <= 20){
-		dir += 25;
+	else if (isBetween(dir, 15 + targetPush, 20 + targetPush)){
+		dir += 20;
 	}
-	else if (dir > 20 && dir <= 40){
+	else if (isBetween(dir, 20 + targetPush, 40 + targetPush)){
 		dir += 45;
 	}
-	else if (dir > 40 && dir < 90){
+	else if (isBetween(dir, 40 + targetPush, 90 + targetPush)){
 		dir += 55;
 	}
-	else if (dir > 90 && dir <= 180){
+	else if (isBetween(dir, 90 + targetPush, 180 + targetPush)){
 		dir += 60;
 	}
-	else if (dir < 10 && dir >= 15){
-		dir -= 10;
+	else if (isBetween(dir, -15 + targetPush, 10 + targetPush)){
+		dir -= 5;
 	}
-	else if (dir < -15 && dir >= -20){
-		dir -= 25;
+	else if (isBetween(dir, -20 + targetPush, -15 + targetPush)){
+		dir -= 20;
 	}
-	else if (dir < -20 && dir >= -40){
+	else if (isBetween(dir, -40 + targetPush, -20 + targetPush)){
 		dir -= 45;
 	}
-	else if (dir < -40 && dir > -90){
+	else if (isBetween(dir, -90 + targetPush, -40 + targetPush)){
 		dir -= 55;
 	}
-	else if (dir <= -90 && dir > -180){
+	else if (isBetween(dir, -180 + targetPush, -90 + targetPush)){
 		dir -= 60;
 	}
 	bearingTo360(dir);
-	//Serial.println("dir: " + String(dir));
 	return dir;
 }
 
-inline float getOrbit_CCW(float dir){
+inline float getOrbit_CCW(float dir, float targetPush){
 	bearingTo180(dir);
 	if (dir < 0){
-		dir = getOrbit(dir) + 180;
+		dir = getOrbit(dir, targetPush) + 180;
 	}
 	else{
-		dir = getOrbit(dir);
+		dir = getOrbit(dir, targetPush);
 	}
 	bearingTo180(dir);
 	return dir;
 }
 
-inline float getOrbit_CW(float dir){
+inline float getOrbit_CW(float dir, float targetPush){
 	bearingTo180(dir);
 	//Serial.println("DIR RIRJ:" + String(dir));
 	if (dir > 0){
-		dir = getOrbit(dir) + 180;
+		dir = getOrbit(dir, targetPush) + 180;
 	}
 	else{
-		dir = getOrbit(dir);
+		dir = getOrbit(dir, targetPush);
 	}
 	bearingTo180(dir);
 	return dir;
 }
 
-inline float getOrbit_CW_CCW(float dir, bool rotation_dir){
+inline float getOrbit_CW_CCW(float dir, bool rotation_dir, float targetPush){
 	if (rotation_dir){
-		return getOrbit_CW(dir);
+		return getOrbit_CW(dir, targetPush);
 	}
-	return getOrbit_CCW(dir);
+	return getOrbit_CCW(dir, targetPush);
 }
 
 inline void chkBoostSpeed(){
 	if (isBetween(IRAngleAdvRelative, -10 + targetBearing, 10 + targetBearing)){			
-		if (goalAngle>= -10 && goalAngle <= 10)	{ targetSpeed = 200; }
-		else 									{ targetSpeed = 160; }
+		if (goalAngle>= -10 && goalAngle <= 10)	{ targetSpeed = 250; }
+		else 									{ targetSpeed = 200; }
 	}
 	else{
-		targetSpeed = MAXSPEED;
+		targetSpeed = maxUserSpeed;
 	}
 }
 
@@ -1199,4 +1205,50 @@ void serialStatus(){
 	dSerial.append("\tS1:"); dSerial.append(stat.slave1);
 	dSerial.append("\tS2:"); dSerial.append(stat.slave2);
 	dSerial.append("\tMotors:"); dSerial.append(stat.motors);
+}
+
+
+void initDIP(){
+	for (uint8_t i = 0; i < 4; i++){
+		pinMode(dipPins[0], output);
+	}
+}
+uint8_t getUserSpeed(){
+	uint8_t speed = 0;		//initialise as 0 so all bits are not set
+	uint8_t bits[4];
+
+	//read dip switch pins
+	for (uint8_t i = 0; i < 4; i++){
+		bits[i] = digitalRead(dipPins[i]);
+	}
+
+	//assign 4 bits into 8 bit uint8_t - seed
+	for (uint8_t i = 0; i < 4; i++){
+		if (digitalRead(bits[i])){
+			speed |= 1 << i;
+		}
+		else{
+			speed &= ~(1 << i);
+		}
+	}
+	speed = (uint8_t)(speed * 255 / 15);
+
+	/*
+	0000	0	0
+	0001	1	17
+	0010	2	34
+	0011	3	51
+	0100	4	68
+	0101	5	85
+	0110	6	102
+	0111	7	119
+	1000	8	136
+	1001	9	153
+	1010	10	170
+	1011	11	187
+	1100	12	204
+	1101	13	221
+	1110	14	238
+	1111	15	255
+	*/
 }
