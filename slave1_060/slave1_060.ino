@@ -56,7 +56,7 @@ extern const uint8_t tsops[] ={
 TSOP tsop(tsops, UNLOCK_PIN);
 
 uint8_t results[TSOP_COUNT];    //array to store results
-float angle, angleAdv;    //variable to store angle result from tsops
+float angle, angleAdv, angleReg;    //variable to store angle result from tsops
 uint8_t strength;
 
 unsigned long lUnlockTime, lLCDTime, lBlinkTime = 0, lRequestTime;
@@ -107,6 +107,9 @@ void loop(){
 	//filter
 	tsop.getAngleAdv(results, temp);
 	angleAdv = temp;
+
+	tsop.getAngleReg(results, temp, b);
+	angleReg = temp;
 	/*for (uint8_t i = 0; i < sizeof(angleAdvArray)/sizeof(angleAdvArray[0]) - 1; i++){
 		angleAdvArray[i] = angleAdvArray[i + 1];
 	}
@@ -150,6 +153,8 @@ void loop(){
 void serialDebug(){  
 	dSerial.append(pgmFreq);
 	dSerial.append(",");
+	dSerial.append(angleReg);
+	dSerial.append(",");
 	dSerial.append(angleAdv);
 	dSerial.append(",");
 	dSerial.append(angle);
@@ -160,9 +165,9 @@ void serialDebug(){
 	// dSerial.append("\tBest:\t" + String(bIndex) + "\t");
     
 	// //Serial.print(tsop.index);		Serial.print('\t');		Serial.println(b_value);	
-	// for (int i = 0; i < TSOP_COUNT; i++){
-	// 	dSerial.append(String(results[i]) + "\t");
-	// }
+	for (int i = 0; i < TSOP_COUNT; i++){
+		dSerial.append(String(results[i]) + "\t");
+	}
 	dSerial.writeBuffer();
 }
 

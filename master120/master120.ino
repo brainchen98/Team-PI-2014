@@ -57,9 +57,9 @@ Micro, add the following to the DEFINES PROJECT property:
 *************************************************************************/
 
 /**** general ***********************************************************/
-#define MAXSPEED						130
+#define MAXSPEED						120
 #define KICK_ENABLED					true
-#define DIP_ENABLED						true
+#define DIP_ENABLED						false
 
 #define HIGHVOLT_PIN					11	//15v reference pin.
 
@@ -76,7 +76,7 @@ Micro, add the following to the DEFINES PROJECT property:
 
 #define LCD_DEBUG						false
 
-#define DEBUG_SERIAL					false
+#define DEBUG_SERIAL					true
 #define DEBUGSERIAL_BAUD				115200
 
 #define BT_TX							0
@@ -286,8 +286,8 @@ int16_t rotational_correction; // correction applied to each individual motor
 // float kd = 40;
 // float kp = 0.6;
 // float kd = 120;
-float kp = 0.5;
-float kd = 80;
+float kp = 0.2;
+float kd = 40;
 
 float error = 0, lInput = 0;
 float proportional = 0, derivative = 0, lDerivative = 0;
@@ -355,6 +355,11 @@ int16_t lightReading1, lightReading2;
 uint8_t lRobotLight = 0;
 
 /*************************************************************************
+***** dip switches *******************************************************
+*************************************************************************/
+extern const uint8_t dipPins[4] = {0, 1, 2, 3};
+
+/*************************************************************************
 ***** temp ***************************************************************
 *************************************************************************/
 
@@ -389,8 +394,10 @@ void setup()
 
 	dSerial.begin(DEBUGSERIAL_BAUD);
 
+#if(DIP_ENABLED)
 	initDIP();
 	maxUserSpeed = getUserSpeed();	// get user speed from dip switches
+#endif
 
 	initI2C();						// initiate i2c
 
@@ -474,7 +481,7 @@ void mainLoop(){
 		stat.slave1 = I2CGet(SLAVE1_ADDRESS, COMMAND_STRENGTH, 1, IRStrength);
 
 		lineNumber = __LINE__;
-		// stat.slave1 = I2CGet(SLAVE1_ADDRESS, COMMAND_RESULTS, 20 * 1, IRResults);
+		stat.slave1 = I2CGet(SLAVE1_ADDRESS, COMMAND_RESULTS, 20 * 1, IRResults);
 	}
 	lineNumber = __LINE__;
 	// read slave2
@@ -571,7 +578,7 @@ void mainLoop(){
 		ballInPos = true;
 	}
 	
-	if (IRStrength > 105){	
+	if (IRStrength > 110){	
 		bool rotation_dir;
 
 		if (lOrbitType == 0){
@@ -592,7 +599,7 @@ void mainLoop(){
 		}
 	
 		targetDirection = getOrbit_CW_CCW(IRAngleAdvRelative, rotation_dir, 00) - cmpsBearing;
-		chkBoostSpeed();
+		chkBoostSpeed(maxUserSpeed);
 		
 
 		if (!isBetween(targetDirection, allowableRangeMin, allowableRangeMax)){
@@ -625,11 +632,20 @@ void mainLoop(){
 
 		if (!isBetween(targetDirection, allowableRangeMin, allowableRangeMax)){
 			// still not working. Let's just get out of where we are
-			targetDirection = dirToGetOut;
+			targetDirection = dirToGetOut;			
 			targetSpeed = maxUserSpeed;
 		}
 		else{
-			chkBoostSpeed();
+			if (IRStrength > 100){
+				targetSpeed = 115;
+			}
+			else if (IRStrength > 90){
+				targetSpeed = 130;
+			}
+			else{
+				targetSpeed = 150;
+			}
+			//chkBoostSpeed(200);
 		}
 	}
 	else{
@@ -840,15 +856,22 @@ float PDCalc(float input, float offset){
 		if (error >= 180){ error -= 180; }
 		proportional = error;
 		// derivative = d/dx(error) when offset = 0. However, derivative = d/dx(input) regardless of setpoint
-		derivative = (input - lInput) * 1000 / dt; 
+		derivative = (input - lInput); 
+		if (derivative > 180){
+			derivative -= 360;
+		}
+		else if (derivative <= -180){
+			derivative += 360;
+		}
+		derivative = derivative * 1000 / dt;
 		// moving average filter for derivative.
-		derivative = derivative / 2 + lDerivative / 2;
+		derivative = 0.3 * derivative + 0.7 * lDerivative;
 		lDerivative = derivative;
 		lInput = input;
 		lastPIDTime = micros();		
 	}
 	if ((error > 90 || error < -90) && derivative < 10){
-		output = (kp*proportional);
+		output = (kp*proportional) + (kd*derivative);
 	}
 	else{
 		output = (kp*proportional);
@@ -913,38 +936,44 @@ inline float getOrbit(float dir, float targetPush){
 	}
 	else if (dir >= -20 && dir <= 20 && goalAngle>= -10 && goalAngle <= 10 && IRStrength > 150);
 	else */
-	if (isBetween(dir, -10 + targetPush, 10 + targetPush)){
-		dir = 0;
+	if (isBetween(dir, -7 + targetPush, 7 + targetPush)){
+		dir = targetPush;
 	}
-	else if (isBetween(dir, 10 + targetPush, 15 + targetPush)){
-		dir += 5;
+	else if (isBetween(dir, 7 + targetPush, 15 + targetPush)){
+		dir += 15;
 	}
 	else if (isBetween(dir, 15 + targetPush, 20 + targetPush)){
-		dir += 20;
+		dir += 30;
 	}
 	else if (isBetween(dir, 20 + targetPush, 40 + targetPush)){
-		dir += 45;
+		dir += 40;
 	}
 	else if (isBetween(dir, 40 + targetPush, 90 + targetPush)){
-		dir += 55;
-	}
-	else if (isBetween(dir, 90 + targetPush, 180 + targetPush)){
 		dir += 60;
 	}
-	else if (isBetween(dir, -15 + targetPush, 10 + targetPush)){
-		dir -= 5;
+	else if (isBetween(dir, 90 + targetPush, 160 + targetPush)){
+		dir += 75;
+	}
+	else if (isBetween(dir, 160 + targetPush, 180 + targetPush)){
+		dir += 90;
+	}
+	else if (isBetween(dir, -15 + targetPush, 7 + targetPush)){
+		dir -= 15;
 	}
 	else if (isBetween(dir, -20 + targetPush, -15 + targetPush)){
-		dir -= 20;
+		dir -= 30;
 	}
 	else if (isBetween(dir, -40 + targetPush, -20 + targetPush)){
-		dir -= 45;
+		dir -= 40;
 	}
 	else if (isBetween(dir, -90 + targetPush, -40 + targetPush)){
-		dir -= 55;
-	}
-	else if (isBetween(dir, -180 + targetPush, -90 + targetPush)){
 		dir -= 60;
+	}
+	else if (isBetween(dir, -160 + targetPush, -90 + targetPush)){
+		dir -= 75;
+	}
+	else if (isBetween(dir, -180 + targetPush, -160 + targetPush)){
+		dir -= 90;
 	}
 	bearingTo360(dir);
 	return dir;
@@ -982,13 +1011,19 @@ inline float getOrbit_CW_CCW(float dir, bool rotation_dir, float targetPush){
 	return getOrbit_CCW(dir, targetPush);
 }
 
-inline void chkBoostSpeed(){
+inline void chkBoostSpeed(uint8_t speed_default){
 	if (isBetween(IRAngleAdvRelative, -10 + targetBearing, 10 + targetBearing)){			
-		if (goalAngle>= -10 && goalAngle <= 10)	{ targetSpeed = 250; }
-		else 									{ targetSpeed = 200; }
+		if (goalAngle>= -10 && goalAngle <= 10)	{ targetSpeed = 200; }
+		else 									{ targetSpeed = 170; }
+	}
+	else if (isBetween(IRAngleAdvRelative, -15 + targetBearing, 15 + targetBearing)){
+		targetSpeed = 160;
+	}
+	else if (isBetween(IRAngleAdvRelative, -30 + targetBearing, 30 + targetBearing)){
+		targetSpeed = 145;
 	}
 	else{
-		targetSpeed = maxUserSpeed;
+		targetSpeed = speed_default;
 	}
 }
 
@@ -1210,7 +1245,7 @@ void serialStatus(){
 
 void initDIP(){
 	for (uint8_t i = 0; i < 4; i++){
-		pinMode(dipPins[0], output);
+		pinMode(dipPins[0], OUTPUT);
 	}
 }
 uint8_t getUserSpeed(){
