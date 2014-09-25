@@ -18,8 +18,8 @@
 
 #define LED 13
 
-#define DEBUG_SERIAL true
-#define DEBUGSERIAL_BAUD 9600
+#define DEBUG_SERIAL false
+#define DEBUGSERIAL_BAUD 115200
 #define DEBUG_LCD false
 
 //slavei2c///////////////////////////////////////////////////////////
@@ -37,7 +37,7 @@
 //tsop///////////////////////////////////////////////////////////////
 #define TSOP_COUNT 20   //number of tsops
 #define UNLOCK_PIN 0    //pin that powers tsops
-#define TSOP_WAIT_TIME 800		//time between unlocking tsops in milliseconds
+#define TSOP_WAIT_TIME 100		//time between unlocking tsops in milliseconds
 /////////////////////////////////////////////////////////////////////
 
 unsigned long nowMillis = 0;
@@ -93,6 +93,7 @@ void setup(){
 //say hi
 void loop(){
 	//timings
+	uint8_t eightBitTemp;
 	float temp;
     timings();    
     //main stuff
@@ -100,16 +101,21 @@ void loop(){
 	//results[0] *= 1.15;
 	tsop.getBest(results, bIndex, b);
 	//tsop.getAnglePairing(results, angleAdv);
-	tsop.getStrength(results, strength);
-
+	tsop.getStrength(results, eightBitTemp);
+	strength = eightBitTemp;
+	
 	tsop.getAngle(results, temp);	
     angle = temp;
 	//filter
 	tsop.getAngleAdv(results, temp);
 	angleAdv = temp;
 
-	tsop.getAngleReg(results, temp, b);
-	angleReg = temp;
+	// tsop.getAngleReg(results, angleReg, b);
+	// if (strength > 130){
+	// 	angleAdv = getMidAngle(getMidAngle(temp, angle), getMidAngle(angleReg, temp));
+	// }
+	// angleAdv = angleReg;
+	// angleReg = temp;
 	/*for (uint8_t i = 0; i < sizeof(angleAdvArray)/sizeof(angleAdvArray[0]) - 1; i++){
 		angleAdvArray[i] = angleAdvArray[i + 1];
 	}
@@ -147,17 +153,20 @@ void loop(){
 	#if(DEBUG_SERIAL)
 		serialDebug();   
 	#endif   
-	
+	//delay(100);
 }
 
 void serialDebug(){  
-	dSerial.append(pgmFreq);
-	dSerial.append(",");
-	dSerial.append(angleReg);
-	dSerial.append(",");
-	dSerial.append(angleAdv);
-	dSerial.append(",");
-	dSerial.append(angle);
+	// dSerial.append(pgmFreq);
+	// dSerial.append(",");
+	// dSerial.append(angleReg);
+	// dSerial.append(",");
+	// dSerial.append(angleAdv);
+	// dSerial.append(",");
+	// dSerial.append(angle);
+	// dSerial.append(",");
+	dSerial.append(strength);
+	dSerial.append("\t||");
 	// dSerial.append("Freq:\t" + String(pgmFreq));
  //    dSerial.append("\tnangleAdv:\t" + String(angleAdv));
 	// dSerial.append("\tangle:\t" + String(angle));
@@ -269,32 +278,31 @@ void requestEvent(){
 /////////////////////////////////////////////////////////////////////
 
 //send angle as a 4 byte float
-void commandAngleFloat(){	
+inline void commandAngleFloat(){	
 	I2C_write(angle);	//write output. I2C_write can write anything
 }
 
-void commandAngleAdvFloat(){
+inline void commandAngleAdvFloat(){
 	I2C_write(angleAdv);
 }
 
-void commandStrength(){
-	uint8_t output;
-	I2C_write(strength);
+inline void commandStrength(){
+	Wire.send(strength);
 }
 
 //send results array
-void commandResults(){
+inline void commandResults(){
 	//results is already in byte/uint8_t array
 	Wire.write(results, TSOP_COUNT);
 }
 
 //send tsop pins array
-void commandTSOPPins(){
+inline void commandTSOPPins(){
 	//tsop pins already in byte/uint8_t array
 	Wire.write(tsop.tsop_pins, TSOP_COUNT);	
 }
 
-void commandBIndex(){
+inline void commandBIndex(){
 	Wire.send(bIndex);
 }
 

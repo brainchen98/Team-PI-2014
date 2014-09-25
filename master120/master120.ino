@@ -57,7 +57,7 @@ Micro, add the following to the DEFINES PROJECT property:
 *************************************************************************/
 
 /**** general ***********************************************************/
-#define MAXSPEED						120
+#define MAXSPEED						160
 #define KICK_ENABLED					true
 #define DIP_ENABLED						false
 
@@ -84,7 +84,7 @@ Micro, add the following to the DEFINES PROJECT property:
 #define BT_SERIAL						Serial1
 
 /**** i2c ***************************************************************/
-#define I2C_RATE						I2C_RATE_400	// i2c rate
+#define I2C_RATE						I2C_RATE_100	// i2c rate
 #define SLAVE1_ADDRESS					0x31			// slave1 address
 #define SLAVE2_ADDRESS					0x32			// slave2 address
 
@@ -119,6 +119,7 @@ Micro, add the following to the DEFINES PROJECT property:
 #define KICK_SIG						12 		// solenoid signal pin. High releases the relay.
 #define KICK_ANA						A0		// solenoid reference pin. Originally max of 5v. Divided to 2.5v.
 #define KICK_ANA_REF					2.58 * 1023 / 3.3	// 2.4v/3.3v*1023
+#define KICK_WAIT_TIME					8000	// time to wait between kicks
 
 /**** TSOP **************************************************************/
 #define TSOP_COUNT						20
@@ -128,15 +129,15 @@ Micro, add the following to the DEFINES PROJECT property:
 #define CMPS_UPDATE_RATE				75 		// cmps update rate in hertz
 
 /**** ultrasonics *******************************************************/
-#define US_RANGE						200 	// range of ultrasonics in cm set un setup code. Improves ultrasonic refresh rate.
+#define US_RANGE						400 	// range of ultrasonics in cm set un setup code. Improves ultrasonic refresh rate.
 
 #define US_FRONT_ADDRESS				0x70
 #define US_RIGHT_ADDRESS				0x71
 #define US_LEFT_ADDRESS					0x72
 
 /**** light sensors *****************************************************/
-#define LREF_WHITE						875
-#define LREF_GREEN						700
+#define LREF_WHITE						800
+#define LREF_GREEN						680
 /*
 	WHITE = (LREF_WHITE, ∞]
 	GREEN = (LREF_GREEN, LREF_WHITE]
@@ -176,6 +177,7 @@ Micro, add the following to the DEFINES PROJECT property:
 #define EDGE_L							4
 #define SIDE_R							5
 #define EDGE_R							6
+#define UNKNOWN 						7
 
 
 /*************************************************************************
@@ -286,8 +288,8 @@ int16_t rotational_correction; // correction applied to each individual motor
 // float kd = 40;
 // float kp = 0.6;
 // float kd = 120;
-float kp = 0.2;
-float kd = 40;
+float kp = 0.5;
+float kd = 110;
 
 float error = 0, lInput = 0;
 float proportional = 0, derivative = 0, lDerivative = 0;
@@ -322,6 +324,7 @@ bool isKicking = false;
 bool kickReady = false;
 uint16_t ana = 0;
 bool ballInPos = false;
+unsigned long lKickTime = 0;
 
 /*************************************************************************
 ***** errors reporting****************************************************
@@ -475,13 +478,19 @@ void mainLoop(){
 	// read slave1	
 	if (stat.slave1 == I2C_STAT_SUCCESS){
 		lineNumber = __LINE__;
-		stat.slave1 = I2CGet(SLAVE1_ADDRESS, COMMAND_ANGLE_FLOAT, 4, IRAngle);
+		//stat.slave1 = I2CGet(SLAVE1_ADDRESS, COMMAND_ANGLE_FLOAT, 4, IRAngle);
 		lineNumber = __LINE__;
-		stat.slave1 = I2CGet(SLAVE1_ADDRESS, COMMAND_ANGLE_ADV_FLOAT, 4, IRAngleAdv);
-		stat.slave1 = I2CGet(SLAVE1_ADDRESS, COMMAND_STRENGTH, 1, IRStrength);
+		//stat.slave1 = I2CGet(SLAVE1_ADDRESS, COMMAND_STRENGTH, 1, IRStrength);
+		Wire.beginTransmission(SLAVE1_ADDRESS);
+		Wire.write(COMMAND_STRENGTH);
+		Wire.endTransmission();
+		Wire.requestFrom(SLAVE1_ADDRESS, 1);
+		while(Wire.available() == 0){	}
+		IRStrength = Wire.read();
+		stat.slave1 = I2CGet(SLAVE1_ADDRESS, COMMAND_ANGLE_ADV_FLOAT, 4, IRAngleAdv);		
 
 		lineNumber = __LINE__;
-		stat.slave1 = I2CGet(SLAVE1_ADDRESS, COMMAND_RESULTS, 20 * 1, IRResults);
+		//stat.slave1 = I2CGet(SLAVE1_ADDRESS, COMMAND_RESULTS, 20 * 1, IRResults);
 	}
 	lineNumber = __LINE__;
 	// read slave2
@@ -516,16 +525,13 @@ void mainLoop(){
 	IRAngleAdvRelative = IRAngleAdv + cmpsBearing;
 	bearingTo180(IRAngleAdvRelative);
 	bearingTo180(IRAngleAdvRelative);
-	Serial.println(IRAngleAdvRelative);
 	
 	lineNumber = __LINE__;
-	ballInPos = false;
-	bool ballInKickAngle = (IRAngleAdv > -15 && IRAngleAdv < 15);
 
 	// out detection
 	getLocation();
 	overideToGetOut = false;
-	location = FIELD;
+	//location = FIELD;
 	//overideToGetOut = true;
 
 	switch (location){
@@ -572,10 +578,6 @@ void mainLoop(){
 			// pretty much completed the orbit. Don't care about the previos orbit type.
 			lOrbitType = 0;
 		}
-	}
-
-	if ((IRStrength > 145) && ballInKickAngle){
-		ballInPos = true;
 	}
 	
 	if (IRStrength > 110){	
@@ -667,13 +669,23 @@ void mainLoop(){
 	/*************************************************************************
 	***** kicking ************************************************************
 	*************************************************************************/
+	ballInPos = false;
+	bool ballInKickAngle = (IRAngleAdv > -25 && IRAngleAdv < 25);
+
+	if ((IRStrength > 156) && ballInKickAngle){
+		ballInPos = true;
+		Serial.print("ballInPos angle strength");
+		Serial.print(IRAngleAdv);
+		Serial.print("\t");
+		Serial.println(String(IRStrength));
+	}
 
 	getKickState();		// check kick state
 	if (isKicking)	{ digitalWrite(KICK_SIG, HIGH);}
 	else			{ digitalWrite(KICK_SIG, LOW); }
 	
-	if (kickReady && !isKicking && ballInPos)	{ kick(); }
-	else if (ana < 10 && isKicking)				{ endKick(); }
+	if (kickReady && !isKicking && ballInPos)	{ kick(); lKickTime = millis();}
+	else if (millis() - lKickTime > 70 && isKicking)	{ endKick(); }
 
 	lineNumber = __LINE__;
 
@@ -710,8 +722,6 @@ void loop()
 	// Serial.println(IRAngle);
 	timings();
 	mainLoop();
-	Serial.print("dir");
-	Serial.println(targetDirection);
 #if(DEBUG_SERIAL)
 	serialDebug();
 #endif
@@ -737,7 +747,6 @@ void chkStatus(){
 	stat.usFront 	= checkConnection(US_FRONT_ADDRESS);
 	stat.usRight 	= checkConnection(US_RIGHT_ADDRESS);
 	stat.usLeft 	= checkConnection(US_LEFT_ADDRESS);
-	Serial.println("stat.i2cLine " + String(stat.slave1));
 }
 
 inline bool blinkLED(){
@@ -812,7 +821,7 @@ inline uint8_t getLightColour(int16_t lReading){
 
 inline void getLocation(){
 	location = FIELD;
-	if (getLightColour(lightReading1) == WHITE && getLightColour(lightReading2 != WHITE)){
+	if (getLightColour(lightReading1) == WHITE && getLightColour(lightReading2) != WHITE){
 		// on left edge
 		location = EDGE_L;
 	}
@@ -822,16 +831,25 @@ inline void getLocation(){
 	}
 	else if (getLightColour(lightReading1) == WHITE && getLightColour(lightReading2) == WHITE){
 		if (usLeftRange <= 20 && usRightRange <= 20){
-			// in back corner
-			location = CORNER_BOTTOM;
+			// in one of the corners
+			if (usFrontRange >= 30){
+				location = CORNER_BOTTOM;
+			}
+			else{
+				location = CORNER_TOP;
+			}
 		}
 		else if (usLeftRange <= 30 && usRightRange > 30){
 			// on left side
 			location = SIDE_L;
 		}
-		else if (usLeftRange > 30 && usLeftRange <= 30){
+		else if (usLeftRange > 30 && usRightRange <= 30){
 			// on right side
 			location = SIDE_R;
+		}
+		else{
+			// we're in trouble. Don't know where we are.
+			location = UNKNOWN;
 		}
 	}
 }
@@ -937,43 +955,43 @@ inline float getOrbit(float dir, float targetPush){
 	else if (dir >= -20 && dir <= 20 && goalAngle>= -10 && goalAngle <= 10 && IRStrength > 150);
 	else */
 	if (isBetween(dir, -7 + targetPush, 7 + targetPush)){
-		dir = targetPush;
+		dir = dir * 1.5;
 	}
 	else if (isBetween(dir, 7 + targetPush, 15 + targetPush)){
-		dir += 15;
+		dir += 5;
 	}
 	else if (isBetween(dir, 15 + targetPush, 20 + targetPush)){
-		dir += 30;
+		dir += 10;
 	}
 	else if (isBetween(dir, 20 + targetPush, 40 + targetPush)){
-		dir += 40;
+		dir += 15;
 	}
 	else if (isBetween(dir, 40 + targetPush, 90 + targetPush)){
-		dir += 60;
+		dir += 40;
 	}
 	else if (isBetween(dir, 90 + targetPush, 160 + targetPush)){
-		dir += 75;
+		dir += 60;
 	}
 	else if (isBetween(dir, 160 + targetPush, 180 + targetPush)){
-		dir += 90;
+		dir += 80;
 	}
 	else if (isBetween(dir, -15 + targetPush, 7 + targetPush)){
-		dir -= 15;
+		dir -= 5;
 	}
 	else if (isBetween(dir, -20 + targetPush, -15 + targetPush)){
-		dir -= 30;
+		dir -= 10;
 	}
 	else if (isBetween(dir, -40 + targetPush, -20 + targetPush)){
-		dir -= 40;
+		dir -= 15;
 	}
 	else if (isBetween(dir, -90 + targetPush, -40 + targetPush)){
-		dir -= 60;
+		dir -= 40;
 	}
 	else if (isBetween(dir, -160 + targetPush, -90 + targetPush)){
-		dir -= 75;
+		dir -= 60;
 	}
 	else if (isBetween(dir, -180 + targetPush, -160 + targetPush)){
-		dir -= 90;
+		dir -= 80;
 	}
 	bearingTo360(dir);
 	return dir;
@@ -1014,13 +1032,13 @@ inline float getOrbit_CW_CCW(float dir, bool rotation_dir, float targetPush){
 inline void chkBoostSpeed(uint8_t speed_default){
 	if (isBetween(IRAngleAdvRelative, -10 + targetBearing, 10 + targetBearing)){			
 		if (goalAngle>= -10 && goalAngle <= 10)	{ targetSpeed = 200; }
-		else 									{ targetSpeed = 170; }
+		else 									{ targetSpeed = 180; }
 	}
 	else if (isBetween(IRAngleAdvRelative, -15 + targetBearing, 15 + targetBearing)){
-		targetSpeed = 160;
+		targetSpeed = 180;
 	}
 	else if (isBetween(IRAngleAdvRelative, -30 + targetBearing, 30 + targetBearing)){
-		targetSpeed = 145;
+		targetSpeed = 170;
 	}
 	else{
 		targetSpeed = speed_default;
@@ -1043,7 +1061,7 @@ inline void endKick(){
 
 inline void getKickState(){
 	ana = analogRead(KICK_ANA);
-	if (ana > KICK_ANA_REF){
+	if (millis() - lKickTime > KICK_WAIT_TIME){
 		// ready to kick
 		kickReady = true;
 	}
@@ -1211,6 +1229,7 @@ inline bool isBetween(float angle, float lower, float upper){
 
 void serialDebug(){
 	dSerial.append("Freq:" + String(pgmFreq));
+	dSerial.append("\tLocation:" + String(location));
 	dSerial.append("\tIRAngle:" + String(IRAngle));
 	dSerial.append("\tIRAngleAdv:" + String(IRAngleAdv));
 	dSerial.append("\tIRStrength:" + String(IRStrength));
@@ -1221,6 +1240,7 @@ void serialDebug(){
 	dSerial.append("\tGoalAngle:" + String(goalAngle));
 	dSerial.append("\tL1:" + String(lightReading1));
 	dSerial.append("\tL2:" + String(lightReading2));
+	dSerial.append("\tusFront:" + String(usFrontRange));
 	dSerial.append("\tusLeft:" + String(usLeftRange));
 	dSerial.append("\tusRight:" + String(usRightRange));
 	dSerial.append("\tallowableRangeMin:" + String(allowableRangeMin));
@@ -1229,7 +1249,7 @@ void serialDebug(){
 	for (uint8_t i = 0; i < TSOP_COUNT; i++){
 		dSerial.append(String(IRResults[i]) + " ");
 	}
-	serialStatus();
+	//serialStatus();
 	dSerial.writeBuffer();
 }
 
