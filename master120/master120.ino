@@ -1,8 +1,8 @@
-/*------------------------------------------------------------------------
+/*==============================================================================
 
 Master code for TEAM PI.
 Created by Brian Chen 03/08/2014
-Last Modified by Brian Chen 13/09/2014 4:54:07 PM
+Last Modified by Brian Chen 25/09/2014 2:34:30 PM
 ... Forever modified by Brian Chen.
 
 Changelog:
@@ -38,40 +38,41 @@ http://nonterminating.com/
 To compile this program for Teensy 3.0 in VS or Atmel Studio with Visual 
 Micro, add the following to the DEFINES PROJECT property:
 	F_CPU=48000000;USB_SERIAL;LAYOUT_US_ENGLISH
-------------------------------------------------------------------------*/
-#include <i2c_t3.h>
-#include <EEPROM.h>
-//#include <EEPROMAnything.h>
-#include <i2cAnything.h>
-#include <cmps10.h>
-#include <SRF08.h>
+==============================================================================*/
 
-#include <pwmMotor.h>
-#include <omnidrive.h>
-#include <debugSerial.h>
+/*----------------------------------------------------------------------------*/
+/* preprocessor directives                                                    */
+/*----------------------------------------------------------------------------*/
 
-#include <orbit.h>
+#include <i2c_t3.h>				// teensy 3.0/3.1 i2c library. See http://forum.pjrc.com/threads/21680-New-I2C-library-for-Teensy3
+#include <EEPROM.h>				// eeprom
+//#include <EEPROMAnything.h>	
+#include <i2cAnything.h>		// custom i2c library for easy functions
+#include <cmps10.h>				// custom cmps10 library for easy access to compass
+#include <SRF08.h>				// custom srf08 library for access to srf08 ultrasonics
 
-/*************************************************************************
-***** #defines section ***************************************************
-*************************************************************************/
+#include <pwmMotor.h>			// custom pwm motor library (includes braking and optional pwm frequencies)
+#include <omnidrive.h>			// custom library for 3-wheeled omnidirectional movement, including acceleration
+#include <debugSerial.h>		// simple library for serial debugging, allowing easy enable/disable of all serial
+//#include <orbit.h>
 
-/**** general ***********************************************************/
+
+/**** general *****************************************************************/
 #define MAXSPEED						160
 #define KICK_ENABLED					true
 #define DIP_ENABLED						false
 
-#define HIGHVOLT_PIN					11	//15v reference pin.
+#define HIGHVOLT_PIN					11				//15v reference pin.
 
 
-/**** teensy crash handling *********************************************/
+/**** teensy crash handling ***************************************************/
 #define WATCHDOG_ENABLED				true
 //reset function
 #define RESTART_ADDR					0xE000ED0C
 #define READ_RESTART()					(*(volatile uint32_t *)RESTART_ADDR)
 #define WRITE_RESTART(val)				((*(volatile uint32_t *)RESTART_ADDR) = (val))
 
-/**** debug *************************************************************/
+/**** debug *******************************************************************/
 #define LED 13
 
 #define LCD_DEBUG						false
@@ -83,7 +84,7 @@ Micro, add the following to the DEFINES PROJECT property:
 #define BT_RX							1
 #define BT_SERIAL						Serial1
 
-/**** i2c ***************************************************************/
+/**** i2c *********************************************************************/
 #define I2C_RATE						I2C_RATE_100	// i2c rate
 #define SLAVE1_ADDRESS					0x31			// slave1 address
 #define SLAVE2_ADDRESS					0x32			// slave2 address
@@ -115,29 +116,31 @@ Micro, add the following to the DEFINES PROJECT property:
 #define COMMAND_GOAL_ANGLE				20
 #define COMMAND_GOAL_X					21
 		
-/**** solenoid **********************************************************/
+/**** solenoid ****************************************************************/
 #define KICK_SIG						12 		// solenoid signal pin. High releases the relay.
 #define KICK_ANA						A0		// solenoid reference pin. Originally max of 5v. Divided to 2.5v.
 #define KICK_ANA_REF					2.58 * 1023 / 3.3	// 2.4v/3.3v*1023
 #define KICK_WAIT_TIME					8000	// time to wait between kicks
 
-/**** TSOP **************************************************************/
+/**** TSOP ********************************************************************/
 #define TSOP_COUNT						20
 
-/**** cmps **************************************************************/
+/**** cmps ********************************************************************/
 #define CMPS_ADDRESS					0x60
 #define CMPS_UPDATE_RATE				75 		// cmps update rate in hertz
 
-/**** ultrasonics *******************************************************/
+/**** ultrasonics *************************************************************/
 #define US_RANGE						400 	// range of ultrasonics in cm set un setup code. Improves ultrasonic refresh rate.
 
 #define US_FRONT_ADDRESS				0x70
 #define US_RIGHT_ADDRESS				0x71
 #define US_LEFT_ADDRESS					0x72
 
-/**** light sensors *****************************************************/
-#define LREF_WHITE						800
-#define LREF_GREEN						680
+/**** light sensors ***********************************************************/
+#define LREF_WHITE1						702
+#define LREF_WHITE2						640
+#define LREF_GREEN1						480
+#define LREF_GREEN2						480
 /*
 	WHITE = (LREF_WHITE, ∞]
 	GREEN = (LREF_GREEN, LREF_WHITE]
@@ -147,7 +150,10 @@ Micro, add the following to the DEFINES PROJECT property:
 #define WHITE 							0
 #define GREEN 							1
 #define BLACK							2
-/**** motors ************************************************************/
+
+
+#define GETCOLOUR(reading, ref_white, ref_green) ((reading>ref_white)?(WHITE):((reading>ref_green)?GREEN:BLACK))
+/**** motors ******************************************************************/
 #define MOTOR_PWM_FREQ					16000	// pwm frequency
 
 // motor pins according to Eagle schematic
@@ -166,10 +172,10 @@ Micro, add the following to the DEFINES PROJECT property:
 #define MOTORC_DIR						4
 #define MOTORD_DIR						5
 
-/**** PID ***************************************************************/
+/**** PID *********************************************************************/
 #define PID_UPDATE_RATE					75
 
-/**** Location **********************************************************/
+/**** Location ****************************************************************/
 #define FIELD 							0
 #define CORNER_TOP						1
 #define CORNER_BOTTOM					2
@@ -179,10 +185,9 @@ Micro, add the following to the DEFINES PROJECT property:
 #define EDGE_R							6
 #define UNKNOWN 						7
 
-
-/*************************************************************************
-***** end #defines section ***********************************************
-*************************************************************************/
+/*----------------------------------------------------------------------------*/
+/* end pre-processor directives                                               */
+/*----------------------------------------------------------------------------*/
 
 #if(WATCHDOG_ENABLED)
 IntervalTimer watchDog;	//timer for watchdog to get out of crash
@@ -200,9 +205,9 @@ bool on = true;
 
 debugSerial dSerial;
 
-/*************************************************************************
-***** TSOPS **************************************************************
-*************************************************************************/
+/*----------------------------------------------------------------------------*/
+/* tsops (IR sensors)                                                         */
+/*----------------------------------------------------------------------------*/
 
 float IRAngle = 0;
 float IRAngleAdv = 0;
@@ -212,9 +217,9 @@ float IRAngleAdvRelative = 0;
 uint8_t IRStrength = 0;
 uint8_t IRResults[TSOP_COUNT];
 
-/*************************************************************************
-***** ultrasonics ********************************************************
-*************************************************************************/
+/*----------------------------------------------------------------------------*/
+/* ultrasonics                                                                */
+/*----------------------------------------------------------------------------*/
 
 SRF08 usFront(US_FRONT_ADDRESS);	//front ultrasonic
 SRF08 usRight(US_RIGHT_ADDRESS);	//right ultrasonic
@@ -223,9 +228,9 @@ SRF08 usLeft(US_LEFT_ADDRESS);	//left ultrasonic
 int16_t usFrontRange = 255, usRightRange = 255, usLeftRange = 255;
 uint8_t usFrontVersion, usRightVersion, usLeftVersion;
 
-/*************************************************************************
-***** cmps ***************************************************************
-*************************************************************************/
+/*----------------------------------------------------------------------------*/
+/* compass                                                                    */
+/*----------------------------------------------------------------------------*/
 
 CMPS10 cmps(CMPS_ADDRESS);
 float cmpsBearing;
@@ -233,9 +238,9 @@ uint16_t cmpsVersion = 255;
 
 unsigned long lastCMPSTime = 0;
 
-/*************************************************************************
-***** Movement ***********************************************************
-*************************************************************************/
+/*----------------------------------------------------------------------------*/
+/* movement                                                                   */
+/*----------------------------------------------------------------------------*/
 
 PMOTOR motorA(MOTORA_PWM, MOTORA_DIR, MOTORA_BRK, true, MOTOR_PWM_FREQ);
 PMOTOR motorB(MOTORB_PWM, MOTORB_DIR, MOTORB_BRK, true, MOTOR_PWM_FREQ);
@@ -254,11 +259,10 @@ uint8_t lSpeed = 0;
 
 unsigned long lastTargetBearingUpdate = 0;
 
-/*************************************************************************
-***** PID Control*********************************************************
-*************************************************************************/
+/*----------------------------------------------------------------------------*/
+/* Rotation/orientation control (PD)                                          */
+/*----------------------------------------------------------------------------*/
 
-// pid control for rotation (well PD actually)
 unsigned long lastPIDTime = 0;
 int16_t rotational_correction; // correction applied to each individual motor
 
@@ -294,9 +298,9 @@ float kd = 110;
 float error = 0, lInput = 0;
 float proportional = 0, derivative = 0, lDerivative = 0;
 
-/*************************************************************************
-***** location ***********************************************************
-*************************************************************************/
+/*----------------------------------------------------------------------------*/
+/* location                                                                   */
+/*----------------------------------------------------------------------------*/
 
 /*movement limitations. The robot is only allowed to move between these angles.
 Values are changed real time depending on the location of the robot.*/
@@ -311,14 +315,14 @@ uint8_t lOrbitType = 0;
 float dirToGetOut = 0;
 bool overideToGetOut = false;
 
-/*************************************************************************
-***** goals **************************************************************
-*************************************************************************/
+/*----------------------------------------------------------------------------*/
+/* goals                                                                      */
+/*----------------------------------------------------------------------------*/
 int16_t goalAngle = 1000;
 
-/*************************************************************************
-***** solenoid ***********************************************************
-*************************************************************************/
+/*----------------------------------------------------------------------------*/
+/* solenoid/kick                                                              */
+/*----------------------------------------------------------------------------*/
 
 bool isKicking = false;
 bool kickReady = false;
@@ -326,9 +330,9 @@ uint16_t ana = 0;
 bool ballInPos = false;
 unsigned long lKickTime = 0;
 
-/*************************************************************************
-***** errors reporting****************************************************
-*************************************************************************/
+/*----------------------------------------------------------------------------*/
+/* errors debugging                                                           */
+/*----------------------------------------------------------------------------*/
 
 struct status {
 	uint8_t i2cLine = I2C_STAT_SUCCESS;
@@ -343,36 +347,36 @@ struct status {
 
 status stat;
 
-/*************************************************************************
-***** lcd ****************************************************************
-
-*************************************************************************/
+/*----------------------------------------------------------------------------*/
+/* lcd                                                                        */
+/*----------------------------------------------------------------------------*/
 unsigned long lLcdTime;
 uint8_t lcdReady = 0;
 
-/*************************************************************************
-***** light sensors ******************************************************
-*************************************************************************/
+/*----------------------------------------------------------------------------*/
+/* light sensors                                                              */
+/*----------------------------------------------------------------------------*/
 
 int16_t lightReading1, lightReading2;
+uint8_t lightColour1, lightColour2;
 uint8_t lRobotLight = 0;
 
-/*************************************************************************
-***** dip switches *******************************************************
-*************************************************************************/
+/*----------------------------------------------------------------------------*/
+/* dip switches                                                               */
+/*----------------------------------------------------------------------------*/
 extern const uint8_t dipPins[4] = {0, 1, 2, 3};
 
-/*************************************************************************
-***** temp ***************************************************************
-*************************************************************************/
+/*----------------------------------------------------------------------------*/
+/* temp                                                                       */
+/*----------------------------------------------------------------------------*/
 
 unsigned long lineNumber = 0;		// line number for crash debugging
 uint8_t previousCrash = 255;
 
 
-/*************************************************************************
-***** Start of main code**************************************************
-*************************************************************************/
+/*----------------------------------------------------------------------------*/
+/* start maing code                                                           */
+/*----------------------------------------------------------------------------*/
 
 void setup()
 {
@@ -469,9 +473,9 @@ void setup()
 
 void mainLoop(){
 	lineNumber = __LINE__;
-	/*************************************************************************
-	***** sensors ************************************************************
-	*************************************************************************/
+	/*----------------------------------------------------------------------------*/
+	/* sensors                                                                    */
+	/*----------------------------------------------------------------------------*/
 	chkStatus();	// check i2c status
 
 	lineNumber = __LINE__;
@@ -515,9 +519,10 @@ void mainLoop(){
 
 	lineNumber = __LINE__;
 
-	/*************************************************************************
-	***** logic **************************************************************
-	*************************************************************************/
+	/*----------------------------------------------------------------------------*/
+	/* logic                                                                      */
+	/*----------------------------------------------------------------------------*/
+
 	bearingTo180(IRAngle);
 	bearingTo180(IRAngleAdv);
 
@@ -529,6 +534,7 @@ void mainLoop(){
 	lineNumber = __LINE__;
 
 	// out detection
+	getLightColours();
 	getLocation();
 	overideToGetOut = false;
 	//location = FIELD;
@@ -537,13 +543,15 @@ void mainLoop(){
 	switch (location){
 		case FIELD:	
 			allowableRangeMin = 0;
-			allowableRangeMax = 359.9999;
+			// isBetween function is inclusive, so isBetween(angle, 0, 360) = isBetween(angle, 0, 0). Not a good idea but seems to work. 
+			allowableRangeMax = 359.9999;	
 			dirToGetOut = 0;
 			break;
 		case EDGE_L:
 			allowableRangeMin = 0;
 			allowableRangeMax = 180;
 			dirToGetOut = 90;
+			overideToGetOut = true;
 			break;
 		case SIDE_L:
 			allowableRangeMin = 0;
@@ -554,21 +562,25 @@ void mainLoop(){
 			allowableRangeMin = -180;
 			allowableRangeMax = 0;
 			dirToGetOut = -90;
+			overideToGetOut = true;
 			break;
 		case SIDE_R:
 			allowableRangeMin = -180;
 			allowableRangeMax = 0;
 			dirToGetOut = -90;
+			overideToGetOut = true;
 			break;
 		case CORNER_BOTTOM:
 			allowableRangeMin = -10;
 			allowableRangeMax = 10;
 			dirToGetOut = 0;
+			overideToGetOut = true;
 			break;
 		case CORNER_TOP:
 			allowableRangeMin = 170;
 			allowableRangeMax = 190;
 			dirToGetOut = 180;
+			overideToGetOut = true;
 			break;
 		default: break;
 	}
@@ -666,9 +678,9 @@ void mainLoop(){
 	targetBearing = 0;
 	movePIDForward(targetDirection, targetSpeed, targetBearing);
 
-	/*************************************************************************
-	***** kicking ************************************************************
-	*************************************************************************/
+	/*----------------------------------------------------------------------------*/
+	/* kicking                                                                    */
+	/*----------------------------------------------------------------------------*/
 	ballInPos = false;
 	bool ballInKickAngle = (IRAngleAdv > -25 && IRAngleAdv < 25);
 
@@ -689,7 +701,7 @@ void mainLoop(){
 
 	lineNumber = __LINE__;
 
-	/*************************************************************************/
+	/*----------------------------------------------------------------------------*/
 
 	// check for all errors
 	if (!chkErr()){
@@ -705,7 +717,6 @@ void mainLoop(){
 	lineNumber = __LINE__;
 }
 
-/* basic loop structure. The "spin" of the program */
 void loop()
 {
 	
@@ -729,6 +740,12 @@ void loop()
 	watchDog.end();
 #endif
 }
+
+
+/*----------------------------------------------------------------------------*/
+/* routine status checks                                                      */
+/*----------------------------------------------------------------------------*/
+
 
 bool chkErr(){
 	if (stat.i2cLine != 0)	{ return false; }
@@ -810,40 +827,51 @@ void timings(){
 	}
 }
 
-/*************************************************************************
-***** Light Sensors ********************************************
-*************************************************************************/
-inline uint8_t getLightColour(int16_t lReading){
-	if(lReading > LREF_WHITE)		{ return WHITE; }
-	else if(lReading > LREF_GREEN)	{ return GREEN; }
-	else							{ return BLACK; }
+
+/*----------------------------------------------------------------------------*/
+/* end main code                                                              */
+/*----------------------------------------------------------------------------*/
+
+
+/*----------------------------------------------------------------------------*/
+/* light sensors                                                              */
+/*----------------------------------------------------------------------------*/
+// inline uint8_t getLightColour(int16_t lReading){
+// 	if(lReading > LREF_WHITE)		{ return WHITE; }
+// 	else if(lReading > LREF_GREEN)	{ return GREEN; }
+// 	else							{ return BLACK; }
+// }
+
+inline void getLightColours(){
+	lightColour1 = GETCOLOUR(lightReading1, LREF_WHITE1, LREF_GREEN1);
+	lightColour2 = GETCOLOUR(lightReading2, LREF_WHITE2, LREF_GREEN2);
 }
 
 inline void getLocation(){
 	location = FIELD;
-	if (getLightColour(lightReading1) == WHITE && getLightColour(lightReading2) != WHITE){
+	if (lightColour1 == WHITE && lightColour2 != WHITE){
 		// on left edge
 		location = EDGE_L;
 	}
-	else if (getLightColour(lightReading1) != WHITE && getLightColour(lightReading2) == WHITE){
+	else if (lightColour1 != WHITE && lightColour2 == WHITE){
 		// on right edge
 		location = EDGE_R;
 	}
-	else if (getLightColour(lightReading1) == WHITE && getLightColour(lightReading2) == WHITE){
+	else if (lightColour1 == WHITE && lightColour2 == WHITE){
 		if (usLeftRange <= 20 && usRightRange <= 20){
 			// in one of the corners
-			if (usFrontRange >= 30){
+			if (usFrontRange >= 28){
 				location = CORNER_BOTTOM;
 			}
 			else{
 				location = CORNER_TOP;
 			}
 		}
-		else if (usLeftRange <= 30 && usRightRange > 30){
+		else if (usLeftRange <= 28 && usRightRange > 28){
 			// on left side
 			location = SIDE_L;
 		}
-		else if (usLeftRange > 30 && usRightRange <= 30){
+		else if (usLeftRange > 28 && usRightRange <= 28){
 			// on right side
 			location = SIDE_R;
 		}
@@ -854,9 +882,9 @@ inline void getLocation(){
 	}
 }
 
-/*************************************************************************
-***** PD and movement control ********************************************
-*************************************************************************/
+/*----------------------------------------------------------------------------*/
+/* Movement                                                                   */
+/*----------------------------------------------------------------------------*/
 
 float PDCalc(float input, float offset){
 	unsigned long dt = micros() - lastPIDTime;
@@ -917,26 +945,26 @@ inline void movePIDForward(float dir, uint8_t speed, float offset){
 	lSpeed = speed;
 
 	rotational_correction = PDCalc(cmpsBearing, offset);
-	if ((dir > -10 && dir <= 0) || (dir > 0 && dir < 10)){
-		bearingTo360(dir);
-		robot.moveAccel(dir, speed, rotational_correction, 0.008, 0.002);
-	}
-	else if ((dir > -20 && dir <= 0) || (dir > 0 && dir < 20)){
-		bearingTo360(dir);
-		robot.moveAccel(dir, speed, rotational_correction, 0.006, 0.002);
-	}
-	else if ((dir > -40 && dir <= 0) || (dir > 0 && dir < 40)){
-		bearingTo360(dir);
-		robot.moveAccel(dir, speed, rotational_correction, 0.003, 0.002);
-	}
-	else if ((dir > -60 && dir <= 0) || (dir > 0 && dir < 60)){
-		bearingTo360(dir);
-		robot.moveAccel(dir, speed, rotational_correction, 0.002, 0.002);
-	}
-	else{
-		bearingTo360(dir);
-		robot.moveAccel(dir, speed, rotational_correction, 0.002, 0.002);
-	}
+	// if ((dir > -10 && dir <= 0) || (dir > 0 && dir < 10)){
+	// 	bearingTo360(dir);
+	// 	robot.moveAccel(dir, speed, rotational_correction, 0.008, 0.002);
+	// }
+	// else if ((dir > -20 && dir <= 0) || (dir > 0 && dir < 20)){
+	// 	bearingTo360(dir);
+	// 	robot.moveAccel(dir, speed, rotational_correction, 0.006, 0.002);
+	// }
+	// else if ((dir > -40 && dir <= 0) || (dir > 0 && dir < 40)){
+	// 	bearingTo360(dir);
+	// 	robot.moveAccel(dir, speed, rotational_correction, 0.003, 0.002);
+	// }
+	// else if ((dir > -60 && dir <= 0) || (dir > 0 && dir < 60)){
+	// 	bearingTo360(dir);
+	// 	robot.moveAccel(dir, speed, rotational_correction, 0.002, 0.002);
+	// }
+	// else{
+	// 	bearingTo360(dir);
+	// 	robot.moveAccel(dir, speed, rotational_correction, 0.002, 0.002);
+	// }
 	//robot.moveNoAccel(dir, speed, rotational_correction);
 }
 
@@ -1040,14 +1068,17 @@ inline void chkBoostSpeed(uint8_t speed_default){
 	else if (isBetween(IRAngleAdvRelative, -30 + targetBearing, 30 + targetBearing)){
 		targetSpeed = 170;
 	}
+	else if (isBetween(IRAngleAdvRelative, 150 + targetBearing, -150 + targetBearing)){
+		targetSpeed = 180;
+	}
 	else{
 		targetSpeed = speed_default;
 	}
 }
 
-/*************************************************************************
-***** solenoid ***********************************************************
-*************************************************************************/
+/*----------------------------------------------------------------------------*/
+/* solenoid                                                                   */
+/*----------------------------------------------------------------------------*/
 
 inline void kick(){
 	digitalWrite(KICK_SIG, HIGH);
@@ -1070,9 +1101,9 @@ inline void getKickState(){
 	}
 }
 
-/*************************************************************************
-***** i2c ****************************************************************
-*************************************************************************/
+/*----------------------------------------------------------------------------*/
+/* i2c                                                                        */
+/*----------------------------------------------------------------------------*/
 
 //initiate i2c
 inline void initI2C(){
@@ -1085,9 +1116,9 @@ uint8_t checkConnection(uint16_t address){
 	return Wire.endTransmission(I2C_STOP, 500);
 }
 
-/*************************************************************************
-***** i2c lcd ************************************************************
-*************************************************************************/
+/*----------------------------------------------------------------------------*/
+/* lcd (via slave2 i2c)                                                       */
+/*----------------------------------------------------------------------------*/
 
 uint8_t lcdWrite(int16_t x, int16_t y, String str){
 	Wire.beginTransmission(SLAVE2_ADDRESS);
@@ -1148,9 +1179,9 @@ uint8_t lcdDrawRect(int16_t x1, int16_t y1, int16_t x2, int16_t y2){
 
 
 
-/*************************************************************************
-***** teensy crash handling***********************************************
-*************************************************************************/
+/*----------------------------------------------------------------------------*/
+/* crash handlin                                                              */
+/*----------------------------------------------------------------------------*/
 
 #if(WATCHDOG_ENABLED)
 //reset function for teensy
@@ -1180,9 +1211,9 @@ void resetWatchDog(){
 }
 #endif
 
-/*************************************************************************
-***** angular functions **************************************************
-*************************************************************************/
+/*----------------------------------------------------------------------------*/
+/* angular functions                                                          */
+/*----------------------------------------------------------------------------*/
 
 inline void bearingTo360(float &bearing){
 	while (bearing < 0){
@@ -1223,9 +1254,9 @@ inline bool isBetween(float angle, float lower, float upper){
 	return false;
 }
 
-/*************************************************************************
-***** serial debugging *** ***********************************************
-*************************************************************************/
+/*----------------------------------------------------------------------------*/
+/* serial debuggigng                                                          */
+/*----------------------------------------------------------------------------*/
 
 void serialDebug(){
 	dSerial.append("Freq:" + String(pgmFreq));
