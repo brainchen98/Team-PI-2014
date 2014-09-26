@@ -1,15 +1,18 @@
-/*
-	Slave1 code for TEAM PI. Slave1 has an i2c address of 0x31. It continuously reads tsop data.
-	Created by Brian Chen 25/12/2013
-	Last Modified by Brian Chen 04/04/2014 11:54pm
-	... Forever modified by Brian Chen.
+/*==============================================================================
 
-	Beta 0.60 (C) TEAM PI 2014
+Slave1 code for TEAM PI. Slave1 has an i2c address of 0x31.
+Created by Brian Chen 25/12/2013
+Last Modified by Brian Chen 04/04/2014 11:54pm
+... Forever modified by Brian Chen.
 
-	To compile this program for Teensy 3.0 in VS or Atmel Studio with Visual Micro, add the
-	following to the DEFINES PROJECT property
+Beta 0.60 (C) TEAM PI 2014
+
+http://nonterminating.com/
+
+To compile this program for Teensy 3.0 in VS or Atmel Studio with Visual 
+Micro, add the following to the DEFINES PROJECT property:
 	F_CPU=48000000;USB_SERIAL;LAYOUT_US_ENGLISH
-*/
+==============================================================================*/
 
 #include <i2c_t3.h>
 #include <TSOP.h>

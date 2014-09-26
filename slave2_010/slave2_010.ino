@@ -1,15 +1,18 @@
-/*
-	Slave2 code for TEAM PI. Slave2 has an i2c address of 0x32.
-	Created by Brian Chen 07/06/2014
-	Last Modified by Brian Chen 07/06/2014 7:28pm
-	... Forever modified by Brian Chen.
+/*==============================================================================
 
-	Beta 0.10 (C) TEAM PI 2014
+Slave2 code for TEAM PI. Slave2 has an i2c address of 0x32.
+Created by Brian Chen 07/06/2014
+Last Modified by Brian Chen 26/09/2014 8:39:53 AM
+... Forever modified by Brian Chen.
 
-	To compile this program for Teensy 3.0 in VS or Atmel Studio with Visual Micro, add the
-	following to the DEFINES PROJECT property
+Beta 0.10 (C) TEAM PI 2014
+
+http://nonterminating.com/
+
+To compile this program for Teensy 3.0 in VS or Atmel Studio with Visual 
+Micro, add the following to the DEFINES PROJECT property:
 	F_CPU=48000000;USB_SERIAL;LAYOUT_US_ENGLISH
-*/
+==============================================================================*/
 
 #include <SPI.h>  
 #include <Pixy.h>
@@ -27,7 +30,7 @@
 
 //slavei2c///////////////////////////////////////////////////////////
 #define I2C_ADDRESS 			0x32
-#define I2C_RATE 				I2C_RATE_100
+#define I2C_RATE 				I2C_RATE_2400
 
 //lcd////////////////////////////////////////////////////////////////
 #define LCD_ENABLED 			false

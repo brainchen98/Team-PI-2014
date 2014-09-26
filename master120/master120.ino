@@ -58,10 +58,11 @@ Micro, add the following to the DEFINES PROJECT property:
 
 
 /**** general *****************************************************************/
-#define MAXSPEED						160
+#define MAXSPEED						255
 #define KICK_ENABLED					true
 #define DIP_ENABLED						false
 
+#define POT_PIN							A0
 #define HIGHVOLT_PIN					11				//15v reference pin.
 
 
@@ -118,7 +119,7 @@ Micro, add the following to the DEFINES PROJECT property:
 		
 /**** solenoid ****************************************************************/
 #define KICK_SIG						12 		// solenoid signal pin. High releases the relay.
-#define KICK_ANA						A0		// solenoid reference pin. Originally max of 5v. Divided to 2.5v.
+//#define KICK_ANA						A0		// solenoid reference pin. Originally max of 5v. Divided to 2.5v.
 #define KICK_ANA_REF					2.58 * 1023 / 3.3	// 2.4v/3.3v*1023
 #define KICK_WAIT_TIME					8000	// time to wait between kicks
 
@@ -137,8 +138,8 @@ Micro, add the following to the DEFINES PROJECT property:
 #define US_LEFT_ADDRESS					0x72
 
 /**** light sensors ***********************************************************/
-#define LREF_WHITE1						702
-#define LREF_WHITE2						640
+#define LREF_WHITE1						807
+#define LREF_WHITE2						750
 #define LREF_GREEN1						480
 #define LREF_GREEN2						480
 /*
@@ -293,7 +294,7 @@ int16_t rotational_correction; // correction applied to each individual motor
 // float kp = 0.6;
 // float kd = 120;
 float kp = 0.5;
-float kd = 110;
+float kd = 50;
 
 float error = 0, lInput = 0;
 float proportional = 0, derivative = 0, lDerivative = 0;
@@ -326,7 +327,7 @@ int16_t goalAngle = 1000;
 
 bool isKicking = false;
 bool kickReady = false;
-uint16_t ana = 0;
+//uint16_t ana = 0;
 bool ballInPos = false;
 unsigned long lKickTime = 0;
 
@@ -388,7 +389,7 @@ void setup()
 	initPrgmTime = millis();
 	pinMode(LED, OUTPUT);			// set led pin to output
 	pinMode(HIGHVOLT_PIN, INPUT);	// set the 15v-> 3.3v pin to input
-	pinMode(KICK_ANA, INPUT);		// set kick_ana pin to input
+	pinMode(POT_PIN, INPUT);		// set kick_ana pin to input
 	analogReadAveraging(4);			// get more accurate analog reads with averaging
 	pinMode(KICK_SIG, OUTPUT);		// set kick_sig to output
 
@@ -409,6 +410,7 @@ void setup()
 	initI2C();						// initiate i2c
 
 	delay(1000);					// delay to allow cmps10 to initialise
+
 	
 	digitalWrite(LED, HIGH);
 	
@@ -476,6 +478,8 @@ void mainLoop(){
 	/*----------------------------------------------------------------------------*/
 	/* sensors                                                                    */
 	/*----------------------------------------------------------------------------*/
+	maxUserSpeed = analogRead(POT_PIN)/4;
+	
 	chkStatus();	// check i2c status
 
 	lineNumber = __LINE__;
@@ -539,7 +543,7 @@ void mainLoop(){
 	overideToGetOut = false;
 	//location = FIELD;
 	//overideToGetOut = true;
-
+	//IRStrength = 0;
 	switch (location){
 		case FIELD:	
 			allowableRangeMin = 0;
@@ -557,6 +561,7 @@ void mainLoop(){
 			allowableRangeMin = 0;
 			allowableRangeMax = 180;
 			dirToGetOut = 90;
+			overideToGetOut = true;
 			break;
 		case EDGE_R:
 			allowableRangeMin = -180;
@@ -592,7 +597,7 @@ void mainLoop(){
 		}
 	}
 	
-	if (IRStrength > 110){	
+	if (IRStrength > 105){	
 		bool rotation_dir;
 
 		if (lOrbitType == 0){
@@ -612,8 +617,8 @@ void mainLoop(){
 			rotation_dir = false;
 		}
 	
-		targetDirection = getOrbit_CW_CCW(IRAngleAdvRelative, rotation_dir, 00) - cmpsBearing;
-		chkBoostSpeed(maxUserSpeed);
+		targetDirection = getOrbit_CW_CCW(IRAngleAdvRelative, rotation_dir, 0) - cmpsBearing;
+		//chkBoostSpeed(maxUserSpeed);
 		
 
 		if (!isBetween(targetDirection, allowableRangeMin, allowableRangeMax)){
@@ -650,15 +655,16 @@ void mainLoop(){
 			targetSpeed = maxUserSpeed;
 		}
 		else{
-			if (IRStrength > 100){
-				targetSpeed = 115;
-			}
-			else if (IRStrength > 90){
-				targetSpeed = 130;
-			}
-			else{
-				targetSpeed = 150;
-			}
+			targetSpeed = maxUserSpeed;
+			// if (IRStrength > 100){
+			// 	targetSpeed = 150;
+			// }
+			// else if (IRStrength > 90){
+			// 	targetSpeed = 150;
+			// }
+			// else{
+			// 	targetSpeed = 150;
+			// }
 			//chkBoostSpeed(200);
 		}
 	}
@@ -675,7 +681,6 @@ void mainLoop(){
 	}
 	
 	// now move the robot
-	targetBearing = 0;
 	movePIDForward(targetDirection, targetSpeed, targetBearing);
 
 	/*----------------------------------------------------------------------------*/
@@ -858,7 +863,7 @@ inline void getLocation(){
 		location = EDGE_R;
 	}
 	else if (lightColour1 == WHITE && lightColour2 == WHITE){
-		if (usLeftRange <= 20 && usRightRange <= 20){
+		if (usLeftRange <= 30 && usRightRange <= 30){
 			// in one of the corners
 			if (usFrontRange >= 28){
 				location = CORNER_BOTTOM;
@@ -867,11 +872,11 @@ inline void getLocation(){
 				location = CORNER_TOP;
 			}
 		}
-		else if (usLeftRange <= 28 && usRightRange > 28){
+		else if (usLeftRange <= 30 && usRightRange > 30){
 			// on left side
 			location = SIDE_L;
 		}
-		else if (usLeftRange > 28 && usRightRange <= 28){
+		else if (usLeftRange > 30 && usRightRange <= 30){
 			// on right side
 			location = SIDE_R;
 		}
@@ -945,27 +950,27 @@ inline void movePIDForward(float dir, uint8_t speed, float offset){
 	lSpeed = speed;
 
 	rotational_correction = PDCalc(cmpsBearing, offset);
-	// if ((dir > -10 && dir <= 0) || (dir > 0 && dir < 10)){
-	// 	bearingTo360(dir);
-	// 	robot.moveAccel(dir, speed, rotational_correction, 0.008, 0.002);
-	// }
-	// else if ((dir > -20 && dir <= 0) || (dir > 0 && dir < 20)){
-	// 	bearingTo360(dir);
-	// 	robot.moveAccel(dir, speed, rotational_correction, 0.006, 0.002);
-	// }
-	// else if ((dir > -40 && dir <= 0) || (dir > 0 && dir < 40)){
-	// 	bearingTo360(dir);
-	// 	robot.moveAccel(dir, speed, rotational_correction, 0.003, 0.002);
-	// }
-	// else if ((dir > -60 && dir <= 0) || (dir > 0 && dir < 60)){
-	// 	bearingTo360(dir);
-	// 	robot.moveAccel(dir, speed, rotational_correction, 0.002, 0.002);
-	// }
-	// else{
-	// 	bearingTo360(dir);
-	// 	robot.moveAccel(dir, speed, rotational_correction, 0.002, 0.002);
-	// }
-	//robot.moveNoAccel(dir, speed, rotational_correction);
+	if ((dir > -10 && dir <= 0) || (dir > 0 && dir < 10)){
+		bearingTo360(dir);
+		robot.moveAccel(dir, speed, rotational_correction, 0.008, 0.002);
+	}
+	else if ((dir > -20 && dir <= 0) || (dir > 0 && dir < 20)){
+		bearingTo360(dir);
+		robot.moveAccel(dir, speed, rotational_correction, 0.006, 0.002);
+	}
+	else if ((dir > -40 && dir <= 0) || (dir > 0 && dir < 40)){
+		bearingTo360(dir);
+		robot.moveAccel(dir, speed, rotational_correction, 0.003, 0.002);
+	}
+	else if ((dir > -60 && dir <= 0) || (dir > 0 && dir < 60)){
+		bearingTo360(dir);
+		robot.moveAccel(dir, speed, rotational_correction, 0.002, 0.002);
+	}
+	else{
+		bearingTo360(dir);
+		robot.moveAccel(dir, speed, rotational_correction, 0.002, 0.002);
+	}
+	robot.moveNoAccel(dir, speed, rotational_correction);
 }
 
 inline void movePIDForwardRelative(float dir, uint8_t speed, float offset){
@@ -983,7 +988,7 @@ inline float getOrbit(float dir, float targetPush){
 	else if (dir >= -20 && dir <= 20 && goalAngle>= -10 && goalAngle <= 10 && IRStrength > 150);
 	else */
 	if (isBetween(dir, -7 + targetPush, 7 + targetPush)){
-		dir = dir * 1.5;
+		dir = targetPush;
 	}
 	else if (isBetween(dir, 7 + targetPush, 15 + targetPush)){
 		dir += 5;
@@ -992,16 +997,18 @@ inline float getOrbit(float dir, float targetPush){
 		dir += 10;
 	}
 	else if (isBetween(dir, 20 + targetPush, 40 + targetPush)){
-		dir += 15;
+		dir += 25;
 	}
 	else if (isBetween(dir, 40 + targetPush, 90 + targetPush)){
 		dir += 40;
 	}
 	else if (isBetween(dir, 90 + targetPush, 160 + targetPush)){
-		dir += 60;
+		dir += 70;
+		//targetSpeed = 180;
 	}
 	else if (isBetween(dir, 160 + targetPush, 180 + targetPush)){
-		dir += 80;
+		dir += 90;
+		//targetSpeed = 200;
 	}
 	else if (isBetween(dir, -15 + targetPush, 7 + targetPush)){
 		dir -= 5;
@@ -1010,16 +1017,18 @@ inline float getOrbit(float dir, float targetPush){
 		dir -= 10;
 	}
 	else if (isBetween(dir, -40 + targetPush, -20 + targetPush)){
-		dir -= 15;
+		dir -= 25;
 	}
 	else if (isBetween(dir, -90 + targetPush, -40 + targetPush)){
 		dir -= 40;
 	}
 	else if (isBetween(dir, -160 + targetPush, -90 + targetPush)){
-		dir -= 60;
+		dir -= 70;
+		//targetSpeed = 180;
 	}
 	else if (isBetween(dir, -180 + targetPush, -160 + targetPush)){
-		dir -= 80;
+		dir -= 90;
+		//targetSpeed = 200;
 	}
 	bearingTo360(dir);
 	return dir;
@@ -1059,11 +1068,11 @@ inline float getOrbit_CW_CCW(float dir, bool rotation_dir, float targetPush){
 
 inline void chkBoostSpeed(uint8_t speed_default){
 	if (isBetween(IRAngleAdvRelative, -10 + targetBearing, 10 + targetBearing)){			
-		if (goalAngle>= -10 && goalAngle <= 10)	{ targetSpeed = 200; }
+		if (goalAngle>= -10 && goalAngle <= 10)	{ targetSpeed = 220; }
 		else 									{ targetSpeed = 180; }
 	}
 	else if (isBetween(IRAngleAdvRelative, -15 + targetBearing, 15 + targetBearing)){
-		targetSpeed = 180;
+		targetSpeed = 220;
 	}
 	else if (isBetween(IRAngleAdvRelative, -30 + targetBearing, 30 + targetBearing)){
 		targetSpeed = 170;
@@ -1091,7 +1100,7 @@ inline void endKick(){
 }
 
 inline void getKickState(){
-	ana = analogRead(KICK_ANA);
+	//ana = analogRead(KICK_ANA);
 	if (millis() - lKickTime > KICK_WAIT_TIME){
 		// ready to kick
 		kickReady = true;
@@ -1270,7 +1279,17 @@ void serialDebug(){
 	dSerial.append("\tTargetSpeed:" + String(targetSpeed));
 	dSerial.append("\tGoalAngle:" + String(goalAngle));
 	dSerial.append("\tL1:" + String(lightReading1));
+	switch(lightColour1){
+		case WHITE: dSerial.append("W"); break;
+		case GREEN: dSerial.append("G"); break;
+		case BLACK: dSerial.append("B"); break;
+	}
 	dSerial.append("\tL2:" + String(lightReading2));
+	switch(lightColour2){
+		case WHITE: dSerial.append("W"); break;
+		case GREEN: dSerial.append("G"); break;
+		case BLACK: dSerial.append("B"); break;
+	}
 	dSerial.append("\tusFront:" + String(usFrontRange));
 	dSerial.append("\tusLeft:" + String(usLeftRange));
 	dSerial.append("\tusRight:" + String(usRightRange));
