@@ -366,6 +366,8 @@ uint8_t lRobotLight = 0;
 /* dip switches                                                               */
 /*----------------------------------------------------------------------------*/
 extern const uint8_t dipPins[4] = {0, 1, 2, 3};
+uint16_t potReadCount = 0;
+uint16_t potTemp = 0;
 
 /*----------------------------------------------------------------------------*/
 /* temp                                                                       */
@@ -406,7 +408,7 @@ void setup()
 	initDIP();
 	maxUserSpeed = getUserSpeed();	// get user speed from dip switches
 #endif
-
+	maxUserSpeed = analogRead(POT_PIN)/4;
 	initI2C();						// initiate i2c
 
 	delay(1000);					// delay to allow cmps10 to initialise
@@ -478,7 +480,16 @@ void mainLoop(){
 	/*----------------------------------------------------------------------------*/
 	/* sensors                                                                    */
 	/*----------------------------------------------------------------------------*/
-	maxUserSpeed = analogRead(POT_PIN)/4;
+
+	// average 50 pot reads for more accuracy
+	potReadCount++;
+	potTemp += analogRead(POT_PIN);
+	if (potReadCount > 50){
+		potReadCount = 0;
+		maxUserSpeed = potTemp / 50 / 4;
+		potTemp = 0;
+	}
+	// maxUserSpeed = analogRead(POT_PIN)/4;
 	
 	chkStatus();	// check i2c status
 
