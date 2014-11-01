@@ -16,9 +16,13 @@ Brian Chen, Robert Kopel, Andrew Su
 Qualified to represent Australia in the Junior competition of Robocup in Brazil 2014.
 
 **2014**
+- Robocup Junior Regionals 1st place
 - Robocup Junior Queensland 1st place
-- Robocup Junior Australia x place
+- Robocup Junior Australia 1st place
+
+Qualified to represent Australia in the Junior competition of Robocup in Hefei, China 2015.
 
 ###Our Goal(s)
-- To achieve 1st in Robocup Junior Australia 2014
+- To be the first Australian team to ever get into the finals
 - To achieve 1st in Robocup Internationals
+- To achieve 1st in Robocup Australia
