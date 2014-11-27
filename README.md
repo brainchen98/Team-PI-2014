@@ -4,6 +4,7 @@ Team-PI
 **Team PI Robotics - Brisbane Boys' College**
 
 Robocup Junior Open Soccer
+[nonterminating.com](http://nonterminating.com/)
 
 ###Team Members
 Brian Chen, Robert Kopel, Andrew Su
@@ -28,11 +29,12 @@ Qualified to represent Australia in the Junior competition of Robocup in Hefei, 
 - To achieve 1st in Robocup Australia (again)
 
 ###Software
-Use Sublime - it's intuitive and looks good.
+Use Sublime Text 3 - it's intuitive and looks good.
 Suggested packages
+- [Package Control](https://sublime.wbond.net/)! The most important plugin you'll ever need for Sublime.
 - Stino (you can install the dev/beta version from a the [new-stino](https://github.com/Robot-Will/Stino/tree/new-stino) branch on Github
-- Sublimelinter
-- Sublimelinter-cppcheck (works with Arduino if you set the right settings). Make sure you install [Cppcheck](http://cppcheck.sourceforge.net/) beforehand. If you're having trouble getting it even linting c++ sources, then see [this](http://cppstartingkitproject-guide.readthedocs.org/en/latest/C++_Starting_Kit_Plugin--Recommandation--Prerequisite--Install_Cppcheck--Test--Minimal_Set_Up.html?highlight=linter). Once you get the linting on .cpp/.h files working, make sure you change you're Sublimelinter preferences to:
+- [Sublimelinter](http://www.sublimelinter.com/en/latest/)
+- [Sublimelinter-cppcheck](https://github.com/SublimeLinter/SublimeLinter-cppcheck) (works with Arduino if you set the right settings). Make sure you install [Cppcheck](http://cppcheck.sourceforge.net/) beforehand. If you're having trouble getting it even linting c++ sources, then see [this](http://cppstartingkitproject-guide.readthedocs.org/en/latest/C++_Starting_Kit_Plugin--Recommandation--Prerequisite--Install_Cppcheck--Test--Minimal_Set_Up.html?highlight=linter). Once you get the linting on .cpp/.h files working, make sure you change you're Sublimelinter preferences to:
 
         "syntax_map": {
             "Arduino": "c_cppcheck",
