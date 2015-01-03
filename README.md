@@ -50,5 +50,8 @@ Suggested packages
 (or something similar)
 
 - If you want a light colour theme, get the [Visual Studio Theme](https://github.com/mihaifm/Visual-Studio.tmTheme)
+*update. Get [ColorSublime](http://colorsublime.com/) from package control to choose your favourite colour theme real time!
+I'm currently using Xcode_default
 - Regardless of what colour theme you want, you must get the [Spacegray Themes](http://kkga.github.io/spacegray/)
-Also, if you're like me and have no clue on how to use git, try using the packages from ST. Maybe even give [Sourcetree](http://www.sourcetreeapp.com/) a try.
+*update. Get [Orchis Light](https://packagecontrol.io/packages/Theme%20-%20Orchis) from package control. It's much better and flatter (and minimalistic!) Much more suited to a light theme.
+
