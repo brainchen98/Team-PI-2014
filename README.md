@@ -23,6 +23,7 @@ Qualified to represent Australia in the Junior competition of Robocup in Brazil 
 - Robocup Junior Australia 1st place
 
 ~~Qualified to represent Australia in the Junior competition of Robocup in Hefei, China 2015.~~
+
 Represented Australia in Robocup In Hefei, China 2015!
 
 **2015**
@@ -31,7 +32,7 @@ Represented Australia in Robocup In Hefei, China 2015!
 - Robocup Junior Queensland 1st place
 
 ###Our Goal(s)
-~~- To achieve 1st in Robocup Internationals~~ (we've now kind of achieved that, though only in half the comp.)
+- ~~To achieve 1st in Robocup Internationals~~ (we've now kind of achieved that, though only in half the comp.)
 - To achieve 1st in Robocup Australia (again)
 
 ###Software
